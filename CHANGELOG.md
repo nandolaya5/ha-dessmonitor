@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- CLI: `analyze` output now captures `hint` (e.g. `"48.0~56.0V"`) and `unit` for value-type control fields, so contributors debugging number-entity range issues have the API-provided min/max available directly in the analysis JSON. Bumped `analysis_version` to 3; existing v2 analyses still verify against their own checksum.
+- CLI: `analyze` output now captures `hint` (e.g. `"48.0~56.0V"`) and `unit` for value-type control fields, so contributors debugging number-entity range issues have the API-provided min/max available directly in the analysis JSON. Bumped `analysis_version` to 3; existing v2 analyses still verify against their own checksum (#22, thanks to @arasuludag for the detailed bug report that exposed the gap).
 
 ### Fixed
 - Voltage and current number entities (e.g. bulk/floating charging voltage, max charging current) now get a `0.1` step even when the DessMonitor API omits the `hint` field for that control. Previously the step was only set when a hint was present, so hint-less fields fell back to Home Assistant's default step of `1`, making the slider too coarse for voltage adjustments (#23, thanks to @Dymyk for the screenshot showing the entity attributes).
