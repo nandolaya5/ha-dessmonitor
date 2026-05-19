@@ -151,15 +151,20 @@ class DessMonitorNumber(CoordinatorEntity, NumberEntity):
         return None, None
 
     def _apply_hint(self, hint: str | None) -> None:
-        """Set min/max/step from the API hint field."""
-        if not hint:
-            return
-        lo, hi = self._parse_hint_range(hint)
-        if lo is not None:
-            self._attr_native_min_value = lo
-        if hi is not None:
-            self._attr_native_max_value = hi
-        unit = self._attr_native_unit_of_measurement or ""
+        """Set min/max from the API hint and step from the unit.
+
+        The step depends on the unit and must be set even when the API does
+        not provide a hint, otherwise the entity falls back to Home Assistant's
+        default step of 1, which is too coarse for voltage and current.
+        """
+        if hint:
+            lo, hi = self._parse_hint_range(hint)
+            if lo is not None:
+                self._attr_native_min_value = lo
+            if hi is not None:
+                self._attr_native_max_value = hi
+
+        unit = (self._attr_native_unit_of_measurement or "").strip()
         if unit in ("V", "A"):
             self._attr_native_step = 0.1
         else:
