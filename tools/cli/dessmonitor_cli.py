@@ -408,6 +408,9 @@ class DessMonitorCLI:
                     if key is not None:
                         options[str(key)] = val
                 entry["options"] = options
+            else:
+                entry["unit"] = field.get("unit")
+                entry["hint"] = field.get("hint")
 
             formatted[name] = entry
 
@@ -749,6 +752,8 @@ DEVCODE_CONFIG = {
                                 "type": details.get("type", "value"),
                                 "id": details.get("id"),
                                 "options": details.get("options"),
+                                "unit": details.get("unit"),
+                                "hint": details.get("hint"),
                             }
                             for name, details in raw_controls.items()
                         ],
@@ -784,7 +789,7 @@ DEVCODE_CONFIG = {
         
         # Convert to sorted lists and prepare mappings
         analysis_result = {
-            "analysis_version": 2,
+            "analysis_version": 3,
             "devcode": devcode,
             "device_sn": device_sn,
             "collector_alias": collector_alias,

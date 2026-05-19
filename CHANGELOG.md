@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CLI: `analyze` output now captures `hint` (e.g. `"48.0~56.0V"`) and `unit` for value-type control fields, so contributors debugging number-entity range issues have the API-provided min/max available directly in the analysis JSON. Bumped `analysis_version` to 3; existing v2 analyses still verify against their own checksum.
+
 ## [2.1.0] - 2026-04-20
 
 ### Added

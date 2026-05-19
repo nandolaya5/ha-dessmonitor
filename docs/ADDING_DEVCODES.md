@@ -54,7 +54,7 @@ Integrity check, so you know the JSON has not been edited after generation:
 python3 tools/cli/dessmonitor_cli.py verify /path/to/analysis_XXXX.json
 ```
 
-Expected output: `Checksum OK - analysis data is intact.` (A v1 analysis without a checksum is acceptable but older; prefer v2.)
+Expected output: `Checksum OK - analysis data is intact.` (A v1 analysis without a checksum is acceptable but older; prefer v3, which includes `hint` and `unit` on value-type control fields. v2 is also valid but lacks those.)
 
 The device SN is excluded from the checksum so reporters can redact it without breaking validation.
 
@@ -72,7 +72,7 @@ Open the analysis and note these fields under the `analysis` key:
 | `sensor_titles` | Raw API titles; compare against `SENSOR_TYPES` in `const.py` |
 | `potential_typos` | Titles the CLI flagged as likely typos |
 | `unit_patterns` | Shows which titles returned non-numeric strings (icon-state sensors, etc.) |
-| `control_fields` | Authoritative enum of priority/config codes the inverter supports, e.g. `{"1":"SUB","2":"SBU","3":"SUF","4":"ZEC"}` |
+| `control_fields` | List of controllable fields. Each entry has `name`, `type` (`options` or `value`), and `id`. Options-type entries include the priority/config code enum, e.g. `{"1":"SUB","2":"SBU","3":"SUF","4":"ZEC"}`. Value-type entries include `hint` (API min/max range like `"48.0~56.0V"` or `"0-900min"`) and `unit`, which the integration parses into number-entity ranges. |
 | `parameter_count` / `parameters` | Sensors only returned by `queryDeviceParsEs`, not by `queryDeviceLastData` |
 
 Also ask the reporter for the inverter model and manufacturer so you can populate `known_inverters`.
