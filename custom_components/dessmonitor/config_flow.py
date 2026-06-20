@@ -42,8 +42,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_COMPANY_KEY, default=DEFAULT_COMPANY_KEY): vol.All(
             str, vol.Length(min=1, max=100)
         ),
-        vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.In(
-            UPDATE_INTERVAL_OPTIONS
+        vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
+            vol.Coerce(int), vol.In(UPDATE_INTERVAL_OPTIONS)
         ),
     }
 )
@@ -238,7 +238,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_UPDATE_INTERVAL,
                         default=current_interval,
-                    ): vol.In(UPDATE_INTERVAL_OPTIONS),
+                    ): vol.All(vol.Coerce(int), vol.In(UPDATE_INTERVAL_OPTIONS)),
                 }
             ),
         )

@@ -1,0 +1,9 @@
+# Test dependencies for the DessMonitor integration.
+# Install with: pip install -r requirements_test.txt
+#
+# pytest-homeassistant-custom-component bundles a matching Home Assistant core
+# plus pytest-asyncio and the MockConfigEntry/hass test fixtures. Pin it so the
+# Home Assistant version under test is reproducible across machines and CI.
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-homeassistant-custom-component==0.13.205

@@ -1,4 +1,4 @@
-.PHONY: help lint format check test install clean
+.PHONY: help lint format check test test-cov install clean
 
 # Default target
 help:
@@ -9,7 +9,8 @@ help:
 	@echo "  make format     - Format code with Black and isort"
 	@echo "  make lint       - Run all linting checks (Black, isort, flake8, mypy)"
 	@echo "  make check      - Run lint checks without modifying files"
-	@echo "  make test       - Run all tests"
+	@echo "  make test       - Run the test suite (pytest)"
+	@echo "  make test-cov   - Run the test suite with a coverage report"
 	@echo "  make clean      - Clean up temporary files"
 	@echo ""
 
@@ -19,6 +20,8 @@ install:
 	@python3 -m venv .venv || true
 	@.venv/bin/pip install --upgrade pip
 	@.venv/bin/pip install black isort flake8 mypy
+	@echo "Installing test dependencies (Home Assistant test harness)..."
+	@.venv/bin/pip install -r requirements_test.txt
 	@echo "✅ Dependencies installed. Activate with: source .venv/bin/activate"
 
 # Format code
@@ -62,7 +65,14 @@ check:
 # Run tests
 test:
 	@echo "🧪 Running tests..."
-	@echo "Note: No test suite configured yet"
+	@.venv/bin/pytest
+	@echo ""
+	@echo "✅ Tests passed!"
+
+# Run tests with a coverage report for the integration
+test-cov:
+	@echo "🧪 Running tests with coverage..."
+	@.venv/bin/pytest --cov=custom_components/dessmonitor --cov-report=term-missing
 	@echo ""
 
 # Clean temporary files

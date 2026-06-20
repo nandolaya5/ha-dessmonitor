@@ -11,15 +11,20 @@ This directory contains collector-specific mappings and configurations for diffe
 - **devcode 2376**: Known to pair with POW-HVM6.2K-48V-LIP
 - **devcode 2449**: Known to pair with EASUN 8/11KWA, WKS Evo MAX II 10kVA 48V
 - **devcode 2451**: Known to pair with Axpert MKS IV 5600VA
+- **devcode 2428**: Known to pair with Hybrid inverter
+- **devcode 2452**: Known to pair with Axpert (PI18 protocol, rebranded)
 - **devcode 6422**: Known to pair with Must PH19-6048 EXP
 - **devcode 6515**: Known to pair with ANENJI ANJ-HHS-11KW-48V-WIFI
 - **devcode 6544**: Known to pair with ANENJI ANJ-HHS-11KW-48V
+- **devcode 2507**: Known to pair with ANENJI ANJ-6200W-48PL-WIFI
 
 ### Device Metadata
 
 Each `devcode_XXXX.py` exposes a `DEVICE_INFO` block that describes the collector. When known, populate the optional `known_inverters` list with inverter model names (e.g., `["POW-HVM6.2K-48V-LIP"]`) so contributors quickly see which hardware has been validated for that devcode.
 
 ## Adding Support for a New Devcode
+
+For the full workflow (CLI analysis, mapping rules, changelog, commit style), see [`docs/ADDING_DEVCODES.md`](../../../docs/ADDING_DEVCODES.md). The short version below is a quick reference.
 
 To add support for a new devcode, follow these steps:
 

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-20
+
+### Added
+- Test suite: introduced a `pytest` suite under `tests/` running against a real Home Assistant core via `pytest-homeassistant-custom-component` (pinned in `requirements_test.txt`, configured in `pyproject.toml`). Covers the config-flow update-interval coercion (#29) and the number-entity slider range/step logic (#22/#23), with the latter at 100% line coverage. Run with `make test` / `make test-cov`; `make install` now also installs the test dependencies.
+- CLI: `analyze` output now captures `hint` (e.g. `"48.0~56.0V"`) and `unit` for value-type control fields, so contributors debugging number-entity range issues have the API-provided min/max available directly in the analysis JSON. Bumped `analysis_version` to 3; existing v2 analyses still verify against their own checksum (#22, thanks to @arasuludag for the detailed bug report that exposed the gap).
+
+### Fixed
+- Charging-voltage and current number entities now stay usable when the DessMonitor API sends a wrong or missing `hint`. The slider range used to come straight from the hint, so a bad hint (e.g. `25-30V` reported on a 48V system whose live setting is `57.6V`) or a missing hint (HA defaulting to `0-100`) left the slider unusable and rejected valid `number.set_value` calls as "out of range". The range is now trusted only when the hint actually brackets the device's current value; otherwise it is synthesized around the live value (floored at `0` for V/A, generous headroom). Since the API rejects genuinely invalid writes, erring wide is safe. The range logic moved to a dependency-free `number_range.py` helper (#22, thanks to @arasuludag for confirming the API returns the wrong hint and @albertdb for the 12V data point and the "API rejects invalid writes anyway" insight; also resolves the range half of #23 reported by @Dymyk).
+- Unloading a config entry no longer raises `KeyError` if the coordinator was never stored (e.g. when setup failed partway): `async_unload_entry` now pops from `hass.data` defensively and only closes the API session when a coordinator is present.
+- Config flow: selecting an update interval no longer fails with `value must be one of [60, 300, 600, 1800, 3600]` on submit. The interval dropdown is backed by an integer-keyed `vol.In`, but the frontend returns the chosen value as a string, so validation rejected every selection and the integration could not be added. The schema now coerces the value to `int` before the membership check (`vol.All(vol.Coerce(int), vol.In(...))`) in both the initial setup and the options flow, mirroring Home Assistant core's own idiom (#29, thanks to @Obibokhomie for the detailed report and root-cause analysis, and to @mullerpetr76 and @Rybriz for confirming).
+- Voltage and current number entities (e.g. bulk/floating charging voltage, max charging current) now get a `0.1` step even when the DessMonitor API omits the `hint` field for that control. Previously the step was only set when a hint was present, so hint-less fields fell back to Home Assistant's default step of `1`, making the slider too coarse for voltage adjustments (#23, thanks to @Dymyk for the screenshot showing the entity attributes).
+
+## [2.1.0] - 2026-04-20
+
+### Added
+- Support for devcode 2507 (ANENJI ANJ-6200W-48PL-WIFI) with sensor title mappings for Battery SOC, energy totals, and temperature titles with API typos and double spaces. Operating mode normalisation fixes the "Grid mode" value so the Operating Mode sensor is available, and output/charger priority mappings cover the short codes returned by the collector (#21, thanks to @algrishina for the CLI analysis data).
+
+### Fixed
+- devcode 2452 (Axpert PI18): duplicate `Energy Today` / `Energy Total` entities caused by the summary endpoint (`webQueryDeviceEs`) returning `energyToday`/`energyTotal` alongside the lastData-sourced `Today/Total generation`; both are now mapped to the canonical names so the coordinator's summary-dedup logic skips them (#17, thanks to @DastardlyBaker for the HA screenshots and analysis data).
+- devcode 2452 (Axpert PI18): `Energy Today`, `Energy Month`, and `Energy Year` values were inflated ~1000x because `queryDeviceLastData` reports these counters in Wh while the sensor unit is fixed to kWh; values are now scaled to kWh. `Total generation` is already reported in kWh and is left unchanged (#17).
+
+### Changed
+- Documentation: added a contributor guide in `custom_components/dessmonitor/device_support/README.md` covering the end-to-end devcode onboarding workflow (CLI analysis, mapping file layout, registry registration, and changelog conventions) so new devcode contributions can be prepared without reading the existing devcode files as examples.
+
+## [2.0.0] - 2026-04-18
+
+### Added
+- **Device configuration control** - Read and write inverter settings directly from Home Assistant (#16, #18). All controllable fields are dynamically discovered from the DessMonitor API per device:
+  - **Select entities** for settings with predefined options (Output Priority, Charger Source Priority, Battery Type, Buzzer Mode, Output Voltage/Frequency, Boot Method, and more).
+  - **Number entities** for numeric settings with min/max ranges parsed from the API hint field (charging voltages, max currents, SOC protection values, EQ timers).
+  - **Button entities** for single-action commands (Clear Record, Reset User Settings, Forced EQ Charging, Exit Fault Mode) - dynamically detected from API fields with exactly one option.
+  - Current values are read from all devices in parallel at startup via `queryDeviceCtrlValue` and cached. Writes update the cache optimistically.
+- Support for devcode 2452 (Axpert PI18 protocol, rebranded) with sensor mappings, output/charger priority normalization, and dual PV input / second AC output support (#17, thanks to @DastardlyBaker for the CLI analysis data).
+- Support for devcode 2428 (Hybrid inverter) with sensor title mappings for output power/voltage/frequency, battery capacity to State of Charge, PV charging current/voltage, and load percent (#20, thanks to @KIBkz for the CLI analysis data).
+- New sensor definitions: Energy Month, Energy Year, Second Output Frequency, Second Output Voltage.
+- CLI: analysis output now includes `analysis_version` field (v2) and HMAC-SHA256 `checksum` for integrity verification. Device serial number is excluded from the checksum so users can redact it without breaking validation.
+- CLI: new `verify` command to validate analysis JSON files against their checksum.
+
 ## [1.9.0] - 2026-03-01
 
 ### Added
@@ -288,7 +326,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code quality enforcement (Black, isort, flake8)
 - Hassfest and HACS validation
 
-[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.9.0...v2.0.0
 [1.9.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.6.0...v1.7.0

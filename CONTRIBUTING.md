@@ -239,12 +239,23 @@ Before submitting a PR:
    - ✅ HACS validation  
    - ✅ Tests (linting, formatting)
 
-2. **Test your changes locally:**
-   - Install in Home Assistant test environment
+2. **Run the test suite:**
+   ```bash
+   make install   # installs dev + test dependencies (one-time)
+   make test      # run the pytest suite
+   make test-cov  # run with a coverage report
+   ```
+   Tests live in `tests/` and run against a real Home Assistant core via
+   [`pytest-homeassistant-custom-component`](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component)
+   (pinned in `requirements_test.txt`; pytest settings are in `pyproject.toml`).
+   Add tests for any behaviour you change, and keep the suite green.
+
+3. **Test your changes locally:**
+   - Install in a Home Assistant test environment
    - Verify existing functionality still works
    - Test new features thoroughly
 
-3. **Code quality:**
+4. **Code quality:**
    - Follow existing code patterns
    - Add appropriate logging
    - Handle errors gracefully
