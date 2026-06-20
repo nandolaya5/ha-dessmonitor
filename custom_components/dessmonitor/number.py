@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, cast
 
 from homeassistant.components.number import NumberEntity
@@ -16,6 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import DessMonitorDataUpdateCoordinator
 from .const import DOMAIN
 from .device_support.device_registry import map_control_field
+from .number_range import compute_range_and_step
 from .utils import create_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -114,8 +114,6 @@ class DessMonitorNumber(CoordinatorEntity, NumberEntity):
         self._param_id = param_id
         self._attr_native_unit_of_measurement = unit
 
-        self._apply_hint(hint)
-
         # Initialize identity
         device_alias = device_meta.get("alias", "DessMonitor")
         self._attr_name = f"{device_alias} {name}"
@@ -126,49 +124,41 @@ class DessMonitorNumber(CoordinatorEntity, NumberEntity):
         )
         self._attr_entity_category = EntityCategory.CONFIG
 
-        # Set initial state from cached control value
-        if initial_value is not None:
-            try:
-                numeric = "".join(c for c in str(initial_value) if c in "0123456789.-")
-                self._attr_native_value = float(numeric)
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Could not convert initial value '%s' to float for %s",
-                    initial_value,
-                    self._attr_unique_id,
-                )
+        # Parse the current value before the range; the slider range is anchored
+        # on it when the API hint is missing or wrong.
+        current_value = self._coerce_value(initial_value)
+        if current_value is not None:
+            self._attr_native_value = current_value
+        elif initial_value is not None:
+            _LOGGER.warning(
+                "Could not convert initial value '%s' to float for %s",
+                initial_value,
+                self._attr_unique_id,
+            )
+
+        self._apply_range_and_step(hint, current_value)
 
     @staticmethod
-    def _parse_hint_range(hint: str) -> tuple[float | None, float | None]:
-        """Parse min/max from hint string like '60.0~66V' or '0-900min'."""
-        numbers = re.findall(r"[\d.]+", hint)
-        if len(numbers) >= 2:
-            try:
-                a, b = float(numbers[0]), float(numbers[1])
-                return (min(a, b), max(a, b))
-            except ValueError:
-                pass
-        return None, None
+    def _coerce_value(raw: str | float | None) -> float | None:
+        """Parse a control value (e.g. '57.6V') into a float, or None."""
+        if raw is None:
+            return None
+        try:
+            numeric = "".join(c for c in str(raw) if c in "0123456789.-")
+            return float(numeric)
+        except (ValueError, TypeError):
+            return None
 
-    def _apply_hint(self, hint: str | None) -> None:
-        """Set min/max from the API hint and step from the unit.
-
-        The step depends on the unit and must be set even when the API does
-        not provide a hint, otherwise the entity falls back to Home Assistant's
-        default step of 1, which is too coarse for voltage and current.
-        """
-        if hint:
-            lo, hi = self._parse_hint_range(hint)
-            if lo is not None:
-                self._attr_native_min_value = lo
-            if hi is not None:
-                self._attr_native_max_value = hi
-
-        unit = (self._attr_native_unit_of_measurement or "").strip()
-        if unit in ("V", "A"):
-            self._attr_native_step = 0.1
-        else:
-            self._attr_native_step = 1.0
+    def _apply_range_and_step(self, hint: str | None, value: float | None) -> None:
+        """Set min/max/step from the API hint, unit, and current value."""
+        lo, hi, step = compute_range_and_step(
+            self._attr_native_unit_of_measurement, hint, value
+        )
+        if lo is not None:
+            self._attr_native_min_value = lo
+        if hi is not None:
+            self._attr_native_max_value = hi
+        self._attr_native_step = step
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the current value."""
