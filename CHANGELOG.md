@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-20
+
 ### Added
 - Test suite: introduced a `pytest` suite under `tests/` running against a real Home Assistant core via `pytest-homeassistant-custom-component` (pinned in `requirements_test.txt`, configured in `pyproject.toml`). Covers the config-flow update-interval coercion (#29) and the number-entity slider range/step logic (#22/#23), with the latter at 100% line coverage. Run with `make test` / `make test-cov`; `make install` now also installs the test dependencies.
 - CLI: `analyze` output now captures `hint` (e.g. `"48.0~56.0V"`) and `unit` for value-type control fields, so contributors debugging number-entity range issues have the API-provided min/max available directly in the analysis JSON. Bumped `analysis_version` to 3; existing v2 analyses still verify against their own checksum (#22, thanks to @arasuludag for the detailed bug report that exposed the gap).
@@ -324,7 +326,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code quality enforcement (Black, isort, flake8)
 - Hassfest and HACS validation
 
-[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.9.0...v2.0.0
 [1.9.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.8.0...v1.9.0
