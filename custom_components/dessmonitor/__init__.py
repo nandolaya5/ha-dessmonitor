@@ -156,10 +156,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         _LOGGER.debug("Coordinator removed and platforms unloaded successfully")
 
-        if hasattr(coordinator, "api") and hasattr(coordinator.api, "close"):
+        if (
+            coordinator is not None
+            and hasattr(coordinator, "api")
+            and hasattr(coordinator.api, "close")
+        ):
             try:
                 await coordinator.api.close()
                 _LOGGER.debug("API session closed successfully")
