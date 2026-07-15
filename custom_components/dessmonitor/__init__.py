@@ -196,11 +196,11 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Initialize."""
         self.api = api
-        self.ctrl_field_cache: dict[str, dict[str, Any]] = {}
-        self.ctrl_value_cache: dict[str, dict[str, str]] = {}
-        self._ctrl_locks: dict[str, asyncio.Lock] = {}
-        self.param_cache: dict[str, dict[str, Any]} = {}
-        self.energy_flow: dict[str, Any] = {}
+        self.ctrl_field_cache: dict = {}
+        self.ctrl_value_cache: dict = {}
+        self._ctrl_locks: dict = {}
+        self.param_cache: dict = {}
+        self.energy_flow: dict = {}
         super().__init__(
             hass,
             _LOGGER,
@@ -332,7 +332,7 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
             try:
                 energy_flow = await self.api.get_energy_flow()
                 self.energy_flow = energy_flow
-                _LOGGER.debug("Energy flow data fetched successfully")
+                _LOGGER.debug("Energy flow data: %s", energy_flow)
             except Exception as err:
                 _LOGGER.warning("Failed to fetch energy flow data: %s", err)
                 self.energy_flow = {}
