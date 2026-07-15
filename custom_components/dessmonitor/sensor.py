@@ -227,7 +227,12 @@ async def async_setup_entry(
     # Add energy flow sensors from queryDeviceEnergyFlow endpoint
     try:
         energy_flow = await coordinator.api.get_energy_flow()
-        if energy_flow:
+        if energy_flow and coordinator_data:
+            first_device_sn = list(coordinator_data.keys())[0]
+            first_device_info = coordinator_data[first_device_sn]
+            device_meta = first_device_info.get("device", {})
+            collector_meta = first_device_info.get("collector", {})
+            
             for sensor_id, config in ENERGY_FLOW_SENSORS.items():
                 section = config["section"]
                 key = config["key"]
@@ -237,7 +242,9 @@ async def async_setup_entry(
                         entities.append(
                             EnergyFlowSensor(
                                 coordinator=coordinator,
-                                device_sn=list(coordinator_data.keys())[0] if coordinator_data else "unknown",
+                                device_sn=first_device_sn,
+                                device_meta=device_meta,
+                                collector_meta=collector_meta,
                                 sensor_id=sensor_id,
                                 config=config,
                                 initial_value=item.get("val"),
@@ -555,6 +562,8 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         self,
         coordinator: DessMonitorDataUpdateCoordinator,
         device_sn: str,
+        device_meta: dict[str, Any],
+        collector_meta: dict[str, Any],
         sensor_id: str,
         config: dict[str, Any],
         initial_value: str | None = None,
@@ -563,12 +572,14 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._device_sn = device_sn
+        self._device_meta = device_meta
+        self._collector_meta = collector_meta
         self._sensor_id = sensor_id
         self._config = config
         self._value = initial_value
         self._unit = initial_unit or config.get("unit", "")
 
-        self._attr_name = config["name"]
+        self._attr_name = f"{device_meta.get('alias', 'Inverter')} {config['name']}"
         self._attr_unique_id = f"{DOMAIN}_{device_sn}_{sensor_id}"
         self._attr_icon = config.get("icon")
         self._attr_unit_of_measurement = self._unit
@@ -583,6 +594,13 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
             self._attr_device_class = getattr(
                 SensorDeviceClass, device_class.upper(), None
             )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return create_device_info(
+            self._device_sn, self._device_meta, self._collector_meta
+        )
 
     @property
     def native_value(self) -> float | None:
