@@ -580,7 +580,7 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = f"{device_meta.get('alias', 'Inverter')} {config['name']}"
         self._attr_unique_id = f"{DOMAIN}_{device_sn}_{sensor_id}"
         self._attr_icon = config.get("icon")
-        self._attr_unit_of_measurement = initial_unit or config.get("unit", "")
+        self._attr_native_unit_of_measurement = initial_unit or config.get("unit", "")
         self._attr_state_class = (
             SensorStateClass.MEASUREMENT
             if config.get("state_class") == "measurement"
@@ -599,6 +599,23 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         return create_device_info(
             self._device_sn, self._device_meta, self._collector_meta
         )
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return the unit of measurement from coordinator's energy flow data."""
+        energy_flow = getattr(self.coordinator, 'energy_flow', {})
+        if not energy_flow:
+            return self._config.get("unit", "")
+
+        section = self._config["section"]
+        key = self._config["key"]
+        section_data = energy_flow.get(section, [])
+
+        for item in section_data:
+            if item.get("par") == key:
+                return item.get("unit", self._config.get("unit", ""))
+
+        return self._config.get("unit", "")
 
     @property
     def native_value(self) -> float | None:

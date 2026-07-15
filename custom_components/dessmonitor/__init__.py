@@ -663,30 +663,11 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
     async def _fetch_summary_payload(self) -> dict[str, Any] | None:
-        """Fetch summary data for dashboard sensors."""
-        try:
-            _LOGGER.debug("Fetching project information for summary data")
-            projects_response = await self.api._make_request(
-                "queryPlants", {"pagesize": 1}
-            )
-
-            plants = projects_response.get("dat", {}).get("plant")
-            if not plants:
-                _LOGGER.warning("No projects found for summary data")
-                return None
-
-            project_id = plants[0]["pid"]
-            _LOGGER.debug("Using project ID %s for summary data", project_id)
-
-            summary_data = await self.api.get_device_summary_data(project_id)
-            _LOGGER.debug("Retrieved summary data for %d devices", len(summary_data))
-            return summary_data
-        except KeyError:
-            _LOGGER.warning("Failed to get project information for summary data")
-            return None
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.warning("Failed to fetch summary data: %s", err)
-            return None
+        """Fetch summary data for dashboard sensors.
+        
+        Not available in ValueClouds API v1 - returns empty dict.
+        """
+        return {}
 
 
 async def async_get_device_diagnostics(
