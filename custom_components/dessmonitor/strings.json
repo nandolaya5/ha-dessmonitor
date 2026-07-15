@@ -2,41 +2,45 @@
   "config": {
     "step": {
       "user": {
-        "title": "DessMonitor Setup",
-        "description": "Set up your DessMonitor integration to monitor your energy storage system.",
+        "title": "ValueClouds Setup",
+        "description": "Set up your ValueClouds integration to monitor your energy storage system. You'll need your device PN, SN, and devcode from the ValueClouds web interface (https://www.valueclouds.com) - open browser DevTools (F12) while viewing your device to capture these values.",
         "data": {
-          "username": "Username",
+          "username": "Email",
           "password": "Password",
-          "company_key": "Company Key (leave default unless specified by your installer)",
+          "pn": "PN (Collector Number)",
+          "sn": "SN (Device Serial Number)",
+          "devcode": "Devcode (Protocol Code)",
           "update_interval": "Update interval (seconds)"
         },
         "data_description": {
-          "username": "Your DessMonitor account username",
-          "password": "Your DessMonitor account password",
-          "company_key": "Your company/vendor key (default: {default_company_key})",
-          "update_interval": "How often to fetch data from DessMonitor. Default is 300 seconds (5 minutes). Premium accounts can use 60 seconds (1 minute) or faster."
+          "username": "Your ValueClouds account email",
+          "password": "Your ValueClouds account password",
+          "pn": "The PN value from your device (found in DevTools Network tab)",
+          "sn": "The SN/serial number of your inverter",
+          "devcode": "The device protocol code (e.g. 6422, 6409)",
+          "update_interval": "How often to fetch data from ValueClouds. Default is 300 seconds (5 minutes)."
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to DessMonitor API. Please check your internet connection.",
-      "invalid_auth": "Invalid username or password. Please verify your credentials.",
+      "cannot_connect": "Failed to connect to ValueClouds API. Please check your internet connection and device credentials.",
+      "invalid_auth": "Invalid email or password. Please verify your credentials.",
       "unknown": "Unexpected error occurred. Please try again."
     },
     "abort": {
-      "already_configured": "This DessMonitor account is already configured."
+      "already_configured": "This ValueClouds account is already configured."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "DessMonitor Options",
-        "description": "Configure advanced options for your DessMonitor integration.",
+        "title": "ValueClouds Options",
+        "description": "Configure advanced options for your ValueClouds integration.",
         "data": {
           "update_interval": "Update interval (seconds)"
         },
         "data_description": {
-          "update_interval": "How often to fetch data from DessMonitor (minimum 60 seconds)"
+          "update_interval": "How often to fetch data from ValueClouds (minimum 60 seconds)"
         }
       }
     }

@@ -1,16 +1,17 @@
-"""Constants for the DessMonitor integration."""
+"""Constants for the ValueClouds (formerly DessMonitor) integration."""
 
 from typing import Final
 
 DOMAIN: Final = "dessmonitor"
-VERSION: Final = "2.2.0"
+VERSION: Final = "2.3.0"
 
 CONF_USERNAME: Final = "username"
 CONF_PASSWORD: Final = "password"
-CONF_COMPANY_KEY: Final = "company_key"
+CONF_PN: Final = "pn"
+CONF_SN: Final = "sn"
+CONF_DEVCODE: Final = "devcode"
 CONF_UPDATE_INTERVAL: Final = "update_interval"
 
-DEFAULT_COMPANY_KEY: Final = "bnrl_frRFjEz8Mkn"
 DEFAULT_UPDATE_INTERVAL: Final = 300
 MIN_UPDATE_INTERVAL: Final = 60
 MAX_UPDATE_INTERVAL: Final = 3600
@@ -23,7 +24,12 @@ UPDATE_INTERVAL_OPTIONS: Final = {
     3600: "1 hour (Minimal usage)",
 }
 
-API_BASE_URL: Final = "https://api.dessmonitor.com/public/"
+API_BASE_URL: Final = "https://api.valueclouds.com/"
+LOGIN_ENDPOINT: Final = "ppr/web/login/login"
+DEVICE_ONE_DATA_ENDPOINT: Final = "ppe/api/auth/web/queryDeviceOneDataxxx"
+HEADER_PROJECT: Final = "IOT"
+DEFAULT_I18N: Final = "en_US"
+DEFAULT_DEVADDR: Final = "255"
 
 UNITS: Final = {
     "POWER": "W",

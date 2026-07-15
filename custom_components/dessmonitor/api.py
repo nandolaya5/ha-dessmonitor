@@ -1,4 +1,4 @@
-"""API client for DessMonitor."""
+"""API client for ValueClouds (formerly DessMonitor)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import aiohttp
 import async_timeout
 from homeassistant.helpers.storage import Store
 
-from .const import API_BASE_URL, UNITS, VERSION
+from .const import API_BASE_URL, DEFAULT_I18N, HEADER_PROJECT, UNITS, VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,20 +28,24 @@ def _mask_identifier(value: str | None) -> str:
 
 
 class DessMonitorAPI:
-    """DessMonitor API client."""
+    """ValueClouds API client."""
 
     def __init__(
         self,
         username: str,
         password: str,
-        company_key: str = "bnrl_frRFjEz8Mkn",
+        pn: str = "",
+        sn: str = "",
+        devcode: str = "",
         session: aiohttp.ClientSession | None = None,
         store: Store | None = None,
     ) -> None:
         """Initialize the API client."""
         self.username = username
         self.password = password
-        self.company_key = company_key
+        self.pn = pn
+        self.sn = sn
+        self.devcode = devcode
         self.base_url = API_BASE_URL
 
         self._session = session
@@ -49,7 +53,6 @@ class DessMonitorAPI:
 
         self.token: str | None = None
         self.secret: str | None = None
-        self.token_expire: int | None = None
         self._store = store
 
         if self._session is None:
@@ -65,90 +68,131 @@ class DessMonitorAPI:
         """Generate SHA-1 hash."""
         return hashlib.sha1(data.encode()).hexdigest().lower()
 
-    def _generate_signature(self, salt: str, action_string: str) -> str:
-        """Generate API signature."""
-        if self.token and self.secret:
-            signature_string = f"{salt}{self.secret}{self.token}{action_string}"
-        else:
-            pwd_sha1 = self._sha1(self.password)
-            signature_string = f"{salt}{pwd_sha1}{action_string}"
-
-        return self._sha1(signature_string)
-
-    def _is_token_expired(self) -> bool:
-        """Check if the token is expired."""
-        if not self.token_expire:
-            return False
-        current_time = int(time.time())
-        expired = current_time >= self.token_expire
-        _LOGGER.debug(
-            "Token expiration check: current=%d, expires=%d, expired=%s",
-            current_time,
-            self.token_expire,
-            expired,
-        )
-        return expired
+    def _get_auth_headers(self) -> dict[str, str]:
+        """Get headers for authenticated requests."""
+        return {
+            "Token": self.token or "",
+            "project": HEADER_PROJECT,
+            "i18n": DEFAULT_I18N,
+        }
 
     async def _make_request(
-        self, action: str, params: dict[str, Any] | None = None
+        self, endpoint: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Make API request."""
+        """Make API request using GET with token header."""
         self._ensure_session()
-        await self._ensure_token(action)
+        await self._ensure_token()
 
-        salt = str(int(time.time() * 1000))
-        action_string = self._build_action_string(action, params)
-        signature = self._generate_signature(salt, action_string)
-        url = self._build_request_url(action, salt, signature, action_string)
+        url = f"{self.base_url}{endpoint}"
+        headers = self._get_auth_headers()
 
         _LOGGER.debug(
-            "Making %s request with %d parameters", action, len(params) if params else 0
+            "Making %s request with %d parameters", endpoint, len(params) if params else 0
         )
 
-        response_data = await self._fetch_json(action, url)
-        return self._validate_api_response(action, response_data)
+        response_data = await self._fetch_json(endpoint, url, params, headers)
+        return self._validate_api_response(endpoint, response_data)
+
+    async def _make_post_request(
+        self, endpoint: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Make API request using POST with JSON body."""
+        self._ensure_session()
+
+        url = f"{self.base_url}{endpoint}"
+
+        _LOGGER.debug("Making POST request to %s", endpoint)
+
+        response_data = await self._fetch_json_post(endpoint, url, payload)
+        return self._validate_api_response(endpoint, response_data)
 
     def _ensure_session(self) -> None:
         """Ensure that an aiohttp session is available."""
         if not self._session:
             raise RuntimeError("Session not initialized")
 
-    async def _ensure_token(self, action: str) -> None:
+    async def _ensure_token(self) -> None:
         """Refresh authentication token when required."""
-        if action == "authSource":
-            return
-        if self._is_token_expired():
-            _LOGGER.info("Token expired for action '%s', re-authenticating...", action)
+        if self.token is None:
             await self.authenticate()
 
-    def _build_action_string(self, action: str, params: dict[str, Any] | None) -> str:
-        """Construct action string used by the API."""
-        action_string = f"&action={action}"
-        if params:
-            for key, value in params.items():
-                action_string += f"&{key}={value}"
-        return action_string
-
-    def _build_request_url(
-        self, action: str, salt: str, signature: str, action_string: str
-    ) -> str:
-        """Construct the full request URL including token when available."""
-        url = f"{self.base_url}?sign={signature}&salt={salt}"
-        if self.token and action != "authSource":
-            url += f"&token={self.token}"
-        return f"{url}{action_string}"
-
-    async def _fetch_json(self, action: str, url: str) -> dict[str, Any]:
+    async def _fetch_json(
+        self,
+        action: str,
+        url: str,
+        params: dict[str, Any] | None,
+        headers: dict[str, str],
+    ) -> dict[str, Any]:
         """Execute HTTP GET and return JSON payload."""
         assert self._session is not None
         timeout_seconds = 30
 
         try:
             async with async_timeout.timeout(timeout_seconds):
-                async with self._session.get(url) as response:
+                async with self._session.get(
+                    url, params=params, headers=headers
+                ) as response:
+                    if response.status in (401, 403):
+                        raise DessMonitorError(
+                            f"Authentication rejected with HTTP status {response.status}"
+                        )
                     response.raise_for_status()
                     try:
-                        return await response.json()
+                        return await response.json(content_type=None)
+                    except aiohttp.ContentTypeError as err:
+                        text_preview = await response.text()
+                        _LOGGER.error(
+                            "Invalid JSON response for action '%s': %s",
+                            action,
+                            text_preview[:500],
+                        )
+                        raise DessMonitorError("Invalid response from server") from err
+        except asyncio.TimeoutError as err:
+            _LOGGER.error(
+                "API request for action '%s' timed out after %ss",
+                action,
+                timeout_seconds,
+            )
+            raise DessMonitorError("Request timed out") from err
+        except asyncio.CancelledError as err:
+            _LOGGER.error(
+                "API request for action '%s' was cancelled (likely due to timeout)",
+                action,
+            )
+            raise DessMonitorError("Request cancelled") from err
+        except aiohttp.ClientResponseError as err:
+            _LOGGER.error(
+                "HTTP %s error for action '%s': %s",
+                err.status,
+                action,
+                err.message,
+            )
+            raise DessMonitorError(
+                f"Server returned HTTP {err.status}: {err.message or 'Unknown error'}"
+            ) from err
+        except aiohttp.ClientError as err:
+            _LOGGER.error("HTTP request failed for action '%s': %s", action, err)
+            raise DessMonitorError(f"Request failed: {err}") from err
+
+    async def _fetch_json_post(
+        self,
+        action: str,
+        url: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Execute HTTP POST with JSON body and return JSON payload."""
+        assert self._session is not None
+        timeout_seconds = 30
+
+        try:
+            async with async_timeout.timeout(timeout_seconds):
+                async with self._session.post(url, json=payload) as response:
+                    if response.status != 200:
+                        raise DessMonitorError(
+                            f"Login failed with HTTP status {response.status}"
+                        )
+                    try:
+                        return await response.json(content_type=None)
                     except aiohttp.ContentTypeError as err:
                         text_preview = await response.text()
                         _LOGGER.error(
@@ -187,9 +231,9 @@ class DessMonitorAPI:
     @staticmethod
     def _validate_api_response(action: str, data: dict[str, Any]) -> dict[str, Any]:
         """Validate API payload and raise errors when needed."""
-        if data.get("err", 0) != 0:
-            error_code = data.get("err")
-            error_msg = data.get("desc", f"API error {error_code}")
+        if data.get("success") is False:
+            error_code = data.get("code")
+            error_msg = data.get("message") or data.get("errorMessage") or f"API error {error_code}"
             _LOGGER.error(
                 "API returned error %s for action '%s': %s",
                 error_code,
@@ -200,7 +244,7 @@ class DessMonitorAPI:
         return data
 
     async def authenticate(self) -> bool:
-        """Authenticate with the DessMonitor API."""
+        """Authenticate with the ValueClouds API."""
         _LOGGER.debug(
             "Starting authentication process for user: %s",
             _mask_identifier(self.username),
@@ -208,67 +252,57 @@ class DessMonitorAPI:
         try:
             self.token = None
             self.secret = None
-            self.token_expire = None
             _LOGGER.debug("Cleared existing authentication tokens")
 
-            auth_params = {
-                "usr": self.username,
-                "company-key": self.company_key,
-                "source": "1",
-                "_app_client_": "web",
-                "_app_id_": "ha-dessmonitor",
-                "_app_version_": VERSION,
+            hashed_password = self._sha1(self.password)
+            payload = {
+                "account": self.username,
+                "password": hashed_password,
+                "project": HEADER_PROJECT,
             }
             _LOGGER.debug(
                 "Authentication parameters: %s",
                 {
                     key: (
                         "***"
-                        if key in {"usr", "company-key", "pwd", "password"}
+                        if key in {"account", "password"}
                         else value
                     )
-                    for key, value in auth_params.items()
+                    for key, value in payload.items()
                 },
             )
 
-            response = await self._make_request("authSource", auth_params)
+            response = await self._make_post_request("ppr/web/login/login", payload)
 
-            if "dat" in response:
-                data = response["dat"]
-                self.token = data.get("token")
-                self.secret = data.get("secret")
-                expire_duration = data.get("expire")
-
-                _LOGGER.debug(
-                    "Authentication response data keys: %s", list(data.keys())
+            if not response.get("success"):
+                error_msg = (
+                    response.get("message")
+                    or response.get("errorMessage")
+                    or "Login was rejected"
                 )
-                _LOGGER.debug("Token received: %s", "Yes" if self.token else "No")
-                _LOGGER.debug("Secret received: %s", "Yes" if self.secret else "No")
-                _LOGGER.debug("Expire duration: %s seconds", expire_duration)
+                raise DessMonitorError(error_msg)
 
-                if expire_duration:
-                    self.token_expire = int(time.time()) + expire_duration
-                    _LOGGER.debug(
-                        "Token will expire at timestamp: %d (in %d seconds)",
-                        self.token_expire,
-                        expire_duration,
-                    )
-                else:
-                    self.token_expire = None
-                    _LOGGER.warning("No expiration duration provided by API")
+            data = response.get("data") or {}
+            self.token = data.get("token")
+            self.secret = data.get("secret")
 
-                _LOGGER.info(
-                    "Successfully authenticated with DessMonitor API, token valid for %d seconds, expires at: %s",
-                    expire_duration or 0,
-                    self.token_expire,
-                )
+            _LOGGER.debug(
+                "Authentication response data keys: %s", list(data.keys())
+            )
+            _LOGGER.debug("Token received: %s", "Yes" if self.token else "No")
+            _LOGGER.debug("Secret received: %s", "Yes" if self.secret else "No")
 
-                if self._store and self.token and self.secret and self.token_expire:
-                    await self._save_token()
+            if not self.token:
+                raise DessMonitorError("Login response did not include a token")
 
-                return True
+            _LOGGER.info(
+                "Successfully authenticated with ValueClouds API"
+            )
 
-            raise DessMonitorError("No authentication data received")
+            if self._store and self.token:
+                await self._save_token()
+
+            return True
 
         except Exception as err:
             _LOGGER.error(
@@ -294,29 +328,16 @@ class DessMonitorAPI:
             return False
 
         saved_token = data.get("token")
-        saved_secret = data.get("secret")
-        saved_expire = data.get("token_expire")
 
-        if not (saved_token and saved_secret and saved_expire):
+        if not saved_token:
             _LOGGER.debug("Saved token missing required fields, ignoring cached value")
             await self.clear_saved_token()
             return False
 
-        current_time = int(time.time())
-        # Add safety buffer so Home Assistant refreshes the token before expiry
-        if current_time >= saved_expire - 300:
-            _LOGGER.debug(
-                "Saved token expired or about to expire, requesting new token"
-            )
-            await self.clear_saved_token()
-            return False
-
         self.token = saved_token
-        self.secret = saved_secret
-        self.token_expire = saved_expire
+        self.secret = data.get("secret")
 
-        remaining = saved_expire - current_time
-        _LOGGER.info("Reused saved token, valid for %d more seconds", remaining)
+        _LOGGER.info("Reused saved token")
         return True
 
     async def _save_token(self) -> None:
@@ -329,7 +350,6 @@ class DessMonitorAPI:
                 {
                     "token": self.token,
                     "secret": self.secret,
-                    "token_expire": self.token_expire,
                 }
             )
             _LOGGER.debug("Token saved to storage")
@@ -340,389 +360,114 @@ class DessMonitorAPI:
         """Remove any saved token from storage and reset local state."""
         self.token = None
         self.secret = None
-        self.token_expire = None
 
         if not self._store:
             return
 
         try:
             await self._store.async_remove()
-            _LOGGER.debug("Cleared cached DessMonitor token from storage")
+            _LOGGER.debug("Cleared cached ValueClouds token from storage")
         except FileNotFoundError:
-            _LOGGER.debug("Cached DessMonitor token file already removed")
+            _LOGGER.debug("Cached ValueClouds token file already removed")
         except Exception as err:
             _LOGGER.debug("Failed to clear cached token: %s", err)
 
-    async def get_collectors(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Get list of collectors (inverters) via API discovery."""
-        _LOGGER.debug("Fetching collectors list via API discovery")
-        collectors: list[dict[str, Any]] = []
+    async def get_device_data(self) -> list[dict[str, Any]]:
+        """Fetch the raw list of named field readings for the configured device.
+
+        Logs in first if there is no cached token. On an auth-rejection
+        response, performs exactly one reactive re-login and retry.
+        """
+        if self.token is None:
+            await self.authenticate()
 
         try:
-            projects = await self._query_projects()
-            for project in projects:
-                pid = project.get("pid")
-                if not pid:
-                    continue
-
-                project_collectors = await self._fetch_collectors_for_project(pid)
-                collectors.extend(project_collectors)
-
-            if not collectors:
-                await self._attempt_direct_collector_query()
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.error("Failed to discover collectors via API: %s", err)
-            _LOGGER.debug("Collector discovery error details", exc_info=True)
+            return await self._async_fetch_device_data()
+        except DessMonitorError as err:
+            if "token" in str(err).lower() or "auth" in str(err).lower():
+                _LOGGER.debug("Token rejected, re-authenticating and retrying once")
+                await self.authenticate()
+                return await self._async_fetch_device_data()
             raise
 
-        _LOGGER.info("Successfully discovered %d collectors via API", len(collectors))
-        projects_summary = self._build_project_summary(collectors)
-        return collectors, projects_summary
+    async def _async_fetch_device_data(self) -> list[dict[str, Any]]:
+        """Fetch device data using queryDeviceOneDataxxx endpoint."""
+        params = {
+            "pn": self.pn,
+            "sn": self.sn,
+            "devcode": self.devcode,
+            "devaddr": "255",
+            "i18n": DEFAULT_I18N,
+        }
 
-    async def _query_projects(self) -> list[dict[str, Any]]:
-        """Retrieve project list used for collector discovery."""
-        _LOGGER.debug("Querying projects to discover collectors")
-        response = await self._make_request("queryPlants", {"pagesize": 50})
+        response = await self._make_request(
+            "ppe/api/auth/web/queryDeviceOneDataxxx", params
+        )
 
-        projects = response.get("dat", {}).get("plant", [])
-        if projects:
-            _LOGGER.debug("Found %d projects", len(projects))
-        else:
-            _LOGGER.debug("No projects returned from queryPlants")
-        return projects
+        fields = response.get("data")
+        if not isinstance(fields, list):
+            raise DessMonitorError("Device data response 'data' was not a list")
 
-    async def _fetch_collectors_for_project(self, pid: int) -> list[dict[str, Any]]:
-        """Fetch all collectors for a given project."""
-        _LOGGER.debug("Querying collectors for project ID: %s", pid)
-        collectors: list[dict[str, Any]] = []
-        page = 0
-        pagesize = 50
-        total_from_api: int | None = None
+        _LOGGER.debug("Retrieved %d data points for device", len(fields))
 
-        while True:
-            response = await self._make_request(
-                "webQueryCollectorsEs", {"pid": pid, "page": page, "pagesize": pagesize}
+        return fields
+
+    async def get_collectors(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Get list of collectors - returns configured device for ValueClouds."""
+        if not self.pn or not self.sn or not self.devcode:
+            raise DessMonitorError(
+                "PN, SN, and devcode must be configured for ValueClouds"
             )
 
-            data = response.get("dat")
-            if not data:
-                break
+        collector = {
+            "pn": self.pn,
+            "pname": "ValueClouds Inverter",
+        }
 
-            batch = data.get("collector", [])
-            total_from_api = total_from_api or data.get("total", 0)
-            if not batch:
-                break
-
-            collectors.extend(batch)
-
-            _LOGGER.debug(
-                "Project %s page %d returned %d collectors (total so far %d/%s)",
-                pid,
-                page,
-                len(batch),
-                len(collectors),
-                total_from_api if total_from_api is not None else "?",
-            )
-
-            if (
-                total_from_api is not None and len(collectors) >= total_from_api
-            ) or len(batch) < pagesize:
-                break
-
-            page += 1
-
-        if collectors:
-            _LOGGER.info(
-                "Retrieved %d total collectors for project %s", len(collectors), pid
-            )
-        return collectors
-
-    async def _attempt_direct_collector_query(self) -> None:
-        """Fallback query for collectors when project lookup returns nothing."""
-        _LOGGER.debug("No collectors found via projects, trying direct collector query")
-        try:
-            direct_response = await self._make_request("queryCollectorCountEs")
-            if "dat" in direct_response:
-                _LOGGER.debug(
-                    "Direct collector query response keys: %s",
-                    (
-                        list(direct_response["dat"].keys())
-                        if isinstance(direct_response["dat"], dict)
-                        else "non-dict response"
-                    ),
-                )
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.warning("Direct collector query failed: %s", err)
-
-    @staticmethod
-    def _build_project_summary(
-        collectors: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """Build summary list of projects present in collector payload."""
-        projects: list[dict[str, Any]] = []
-        seen_projects: set[int] = set()
-        for collector in collectors:
-            pid = collector.get("pid")
-            if pid is None or pid in seen_projects:
-                continue
-
-            projects.append(
-                {
-                    "pid": pid,
-                    "pname": collector.get("pname", "Unknown Project"),
-                }
-            )
-            seen_projects.add(pid)
-        return projects
+        _LOGGER.info("Using configured device: PN=%s, SN=%s", self.pn, self.sn)
+        return [collector], [{"pid": 1, "pname": "ValueClouds"}]
 
     async def get_collector_devices(self, pn: str) -> dict[str, Any]:
-        """Get devices under a collector."""
-        _LOGGER.debug("Fetching devices for collector PN: %s", pn)
-        response = await self._make_request("queryCollectorDevices", {"pn": pn})
-
-        devices_data = response.get("dat", {})
-        device_count = len(devices_data.get("dev", []))
-        _LOGGER.debug("Found %d devices for collector %s", device_count, pn)
-
-        if device_count > 0:
-            for i, device in enumerate(devices_data.get("dev", [])):
-                _LOGGER.debug(
-                    "Device %d: SN=%s, devcode=%s, devaddr=%s",
-                    i,
-                    device.get("sn"),
-                    device.get("devcode"),
-                    device.get("devaddr"),
-                )
-
-        return devices_data
+        """Get devices under a collector - returns configured device."""
+        return {
+            "pn": pn,
+            "dev": [
+                {
+                    "devcode": int(self.devcode) if self.devcode.isdigit() else 0,
+                    "devaddr": 255,
+                    "sn": self.sn,
+                    "alias": f"Inverter {self.sn}",
+                }
+            ],
+        }
 
     async def get_device_last_data(
         self, pn: str, devcode: int, devaddr: int, sn: str
     ) -> list[dict[str, Any]]:
-        """Get latest device data."""
-        _LOGGER.debug(
-            "Fetching device data: pn=%s, devcode=%s, devaddr=%s, sn=%s",
-            pn,
-            devcode,
-            devaddr,
-            sn,
-        )
-
-        params = {
-            "pn": pn,
-            "devcode": devcode,
-            "devaddr": devaddr,
-            "sn": sn,
-            "i18n": "en",
-        }
-
-        response = await self._make_request("queryDeviceLastData", params)
-        device_data = response.get("dat", [])
-
-        _LOGGER.debug("Retrieved %d data points for device %s", len(device_data), sn)
-
-        if device_data and _LOGGER.isEnabledFor(logging.DEBUG):
-            data_types = [d.get("title", "Unknown") for d in device_data]
-            _LOGGER.debug("Data point types for device %s: %s", sn, data_types)
-
-        return device_data
+        """Get latest device data - delegates to get_device_data."""
+        return await self.get_device_data()
 
     async def get_device_summary_data(self, pid: int) -> dict[str, dict[str, Any]]:
-        """Get device summary data from webQueryDeviceEs API."""
-        _LOGGER.debug("Fetching device summary data for project ID: %s", pid)
-
-        response = await self._make_request(
-            "webQueryDeviceEs", {"pid": pid, "pagesize": 50}
-        )
-
-        project_data = response.get("dat", {})
-        devices = project_data.get("device", [])
-
-        _LOGGER.debug("Retrieved summary data for %d devices", len(devices))
-
-        summary_data = {}
-        for device in devices:
-            sn = device.get("sn")
-            if sn:
-                device_summary = []
-                device_alias = device.get("devalias", "Unknown")
-
-                if "outpower" in device:
-                    device_summary.append(
-                        {
-                            "title": "outpower",
-                            "val": device["outpower"],
-                            "unit": UNITS["POWER_KW"],
-                        }
-                    )
-                    _LOGGER.debug(
-                        "Added Total PV Power for %s (%s): %s kW",
-                        device_alias,
-                        sn,
-                        device["outpower"],
-                    )
-
-                if "energyToday" in device:
-                    device_summary.append(
-                        {
-                            "title": "energyToday",
-                            "val": device["energyToday"],
-                            "unit": UNITS["ENERGY"],
-                        }
-                    )
-                    _LOGGER.debug(
-                        "Added Energy Today for %s (%s): %s kWh",
-                        device_alias,
-                        sn,
-                        device["energyToday"],
-                    )
-
-                if "energyTotal" in device:
-                    device_summary.append(
-                        {
-                            "title": "energyTotal",
-                            "val": device["energyTotal"],
-                            "unit": UNITS["ENERGY"],
-                        }
-                    )
-                    _LOGGER.debug(
-                        "Added Energy Total for %s (%s): %s kWh",
-                        device_alias,
-                        sn,
-                        device["energyTotal"],
-                    )
-
-                summary_data[sn] = {
-                    "data": device_summary,
-                    "device": {
-                        "alias": device.get("devalias", "DessMonitor"),
-                        "sn": sn,
-                        "status": device.get("status", 0),
-                    },
-                }
-
-                _LOGGER.debug(
-                    "Summary data for device %s: %d data points",
-                    sn,
-                    len(device_summary),
-                )
-
-        return summary_data
+        """Get device summary data - not available in ValueClouds API v1."""
+        return {}
 
     async def get_device_control_fields(
         self, pn: str, devcode: int, devaddr: int, sn: str
     ) -> dict[str, Any]:
-        """Get device control fields (configuration options)."""
-        _LOGGER.debug("Fetching device control fields for device: %s", sn)
-
-        response = await self._make_request(
-            "queryDeviceCtrlField",
-            {
-                "i18n": "en_US",
-                "source": "1",
-                "pn": pn,
-                "devcode": devcode,
-                "devaddr": devaddr,
-                "sn": sn,
-            },
-        )
-
-        control_data = response.get("dat", {})
-        fields = control_data.get("field", [])
-
-        _LOGGER.debug("Retrieved %d control fields for device %s", len(fields), sn)
-
-        config_settings = {}
-
-        for field in fields:
-            field_name = field.get("name", "")
-            field_id = field.get("id", "")
-
-            # Determine field type based on presence of options
-            if "item" in field and field["item"]:
-                options = {}
-                for item in field["item"]:
-                    key = item.get("key", "")
-                    val = item.get("val", "")
-                    options[key] = val
-
-                config_settings[field_name] = {
-                    "id": field_id,
-                    "type": "options",
-                    "options": options,
-                }
-            else:
-                config_settings[field_name] = {
-                    "id": field_id,
-                    "type": "value",
-                    "unit": field.get("unit"),
-                    "hint": field.get("hint"),
-                }
-
-            _LOGGER.debug("Added control field: %s (%s)", field_name, field_id)
-
-        return config_settings
+        """Get device control fields - not available in ValueClouds API v1."""
+        return {}
 
     async def get_device_parameters(
         self, pn: str, devcode: int, devaddr: int, sn: str
     ) -> dict[str, Any]:
-        """Get device parameters (current parameter values)."""
-        _LOGGER.debug("Fetching device parameters for device: %s", sn)
-
-        response = await self._make_request(
-            "queryDeviceParsEs",
-            {
-                "i18n": "en_US",
-                "source": "1",
-                "pn": pn,
-                "devcode": devcode,
-                "devaddr": devaddr,
-                "sn": sn,
-            },
-        )
-
-        param_data = response.get("dat", {})
-        parameters = param_data.get("parameter", [])
-
-        _LOGGER.debug("Retrieved %d parameters for device %s", len(parameters), sn)
-
-        param_settings = {}
-
-        for param in parameters:
-            param_name = param.get("name", "")
-            param_value = param.get("val", "")
-            param_unit = param.get("unit", "")
-            param_id = param.get("par", "")
-
-            param_settings[param_name] = {
-                "value": param_value,
-                "unit": param_unit,
-                "id": param_id,
-            }
-
-            _LOGGER.debug(
-                "Added parameter: %s = %s %s", param_name, param_value, param_unit
-            )
-
-        return param_settings
+        """Get device parameters - not available in ValueClouds API v1."""
+        return {}
 
     async def get_device_control_value(
         self, pn: str, devcode: int, devaddr: int, sn: str, field_id: str
     ) -> dict[str, Any]:
-        """Get current value of a single control field (queryDeviceCtrlValue)."""
-        response = await self._make_request(
-            "queryDeviceCtrlValue",
-            {
-                "pn": pn,
-                "devcode": devcode,
-                "devaddr": devaddr,
-                "sn": sn,
-                "id": field_id,
-                "i18n": "en_US",
-                "source": "1",
-            },
-        )
-        return response.get("dat", {})
+        """Get current value of a single control field - not available in ValueClouds API v1."""
+        return {}
 
     async def set_device_control_value(
         self,
@@ -733,27 +478,12 @@ class DessMonitorAPI:
         param_id: str,
         value: str,
     ) -> dict[str, Any]:
-        """Set a device control value (ctrlDevice)."""
-        _LOGGER.info(
-            "Setting param %s to %s for device %s",
-            param_id,
-            value,
-            _mask_identifier(sn),
+        """Set a device control value - not available in ValueClouds API v1."""
+        _LOGGER.warning(
+            "Setting device control values is not supported in ValueClouds API v1"
         )
-
-        params = {
-            "pn": pn,
-            "devcode": devcode,
-            "devaddr": devaddr,
-            "sn": sn,
-            "id": param_id,
-            "val": value,
-            "i18n": "en_US",
-            "source": "1",
-        }
-
-        return await self._make_request("ctrlDevice", params)
+        return {"success": False, "message": "Not supported in v1"}
 
 
 class DessMonitorError(Exception):
-    """Exception raised for DessMonitor API errors."""
+    """Exception raised for ValueClouds API errors."""

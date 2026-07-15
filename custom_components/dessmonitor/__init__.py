@@ -71,7 +71,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 def _create_api_client(hass: HomeAssistant, entry: ConfigEntry) -> DessMonitorAPI:
     """Create API client with storage-backed token handling."""
     username = entry.data["username"]
-    company_key = entry.data.get("company_key", "bnrl_frRFjEz8Mkn")
+    pn = entry.data.get("pn", "")
+    sn = entry.data.get("sn", "")
+    devcode = entry.data.get("devcode", "")
     _LOGGER.debug("Initializing API client for user: %s", username)
 
     store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_auth")
@@ -79,7 +81,9 @@ def _create_api_client(hass: HomeAssistant, entry: ConfigEntry) -> DessMonitorAP
     return DessMonitorAPI(
         username=username,
         password=entry.data["password"],
-        company_key=company_key,
+        pn=pn,
+        sn=sn,
+        devcode=devcode,
         store=store,
     )
 

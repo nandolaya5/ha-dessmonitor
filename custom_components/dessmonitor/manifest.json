@@ -1,6 +1,6 @@
 {
   "domain": "dessmonitor",
-  "name": "DessMonitor",
+  "name": "ValueClouds",
   "after_dependencies": [
     "http"
   ],
@@ -20,5 +20,5 @@
   "requirements": [
     "aiohttp>=3.8.0"
   ],
-  "version": "2.2.0"
+  "version": "2.3.0"
 }

@@ -14,11 +14,12 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import DessMonitorAPI, DessMonitorError
 from .const import (
-    CONF_COMPANY_KEY,
+    CONF_DEVCODE,
     CONF_PASSWORD,
+    CONF_PN,
+    CONF_SN,
     CONF_UPDATE_INTERVAL,
     CONF_USERNAME,
-    DEFAULT_COMPANY_KEY,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     UPDATE_INTERVAL_OPTIONS,
@@ -39,9 +40,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): vol.All(str, vol.Length(min=1, max=100)),
         vol.Required(CONF_PASSWORD): vol.All(str, vol.Length(min=1, max=100)),
-        vol.Optional(CONF_COMPANY_KEY, default=DEFAULT_COMPANY_KEY): vol.All(
-            str, vol.Length(min=1, max=100)
-        ),
+        vol.Required(CONF_PN): vol.All(str, vol.Length(min=1, max=100)),
+        vol.Required(CONF_SN): vol.All(str, vol.Length(min=1, max=100)),
+        vol.Required(CONF_DEVCODE): vol.All(str, vol.Length(min=1, max=20)),
         vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
             vol.Coerce(int), vol.In(UPDATE_INTERVAL_OPTIONS)
         ),
@@ -55,7 +56,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
     username = data[CONF_USERNAME].strip()
-    company_key = data[CONF_COMPANY_KEY].strip()
     update_interval = data[CONF_UPDATE_INTERVAL]
 
     _LOGGER.debug(
@@ -68,7 +68,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     api = DessMonitorAPI(
         username=username,
         password=data[CONF_PASSWORD],
-        company_key=company_key,
+        pn=data[CONF_PN],
+        sn=data[CONF_SN],
+        devcode=data[CONF_DEVCODE],
         session=session,
     )
 
@@ -82,24 +84,24 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
             )
             raise InvalidAuth("Authentication failed")
 
-        _LOGGER.debug("Authentication successful, fetching collectors")
-        collectors, _projects = await api.get_collectors()
-        if not collectors:
-            _LOGGER.error("No collectors found for user: %s", _mask_username(username))
-            raise CannotConnect("No collectors found")
+        _LOGGER.debug("Authentication successful, fetching device data")
+        device_data = await api.get_device_data()
+        if not device_data:
+            _LOGGER.error("No device data found for user: %s", _mask_username(username))
+            raise CannotConnect("No device data found")
 
         _LOGGER.info(
-            "Validation successful: user=%s, collectors=%d",
+            "Validation successful: user=%s, data_points=%d",
             _mask_username(username),
-            len(collectors),
+            len(device_data),
         )
         return {
-            "title": f"DessMonitor ({username})",
-            "collectors_count": len(collectors),
+            "title": f"ValueClouds ({username})",
+            "data_points_count": len(device_data),
         }
     except DessMonitorError as err:
         error_msg = str(err).lower()
-        _LOGGER.error("DessMonitor API error during validation: %s", err)
+        _LOGGER.error("ValueClouds API error during validation: %s", err)
         if "password" in error_msg or "auth" in error_msg:
             raise InvalidAuth from err
         raise CannotConnect from err
@@ -167,9 +169,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
-            description_placeholders={
-                "default_company_key": DEFAULT_COMPANY_KEY,
-            },
         )
 
     async def async_step_import(self, import_data: dict[str, Any]) -> FlowResult:

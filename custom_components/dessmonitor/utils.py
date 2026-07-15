@@ -1,4 +1,4 @@
-"""Utility functions for DessMonitor integration."""
+"""Utility functions for ValueClouds (formerly DessMonitor) integration."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ def create_device_info(
     device_meta: dict[str, Any],
     collector_meta: dict[str, Any],
 ) -> DeviceInfo:
-    """Create device info dictionary for a DessMonitor device.
+    """Create device info dictionary for a ValueClouds device.
 
     Args:
         device_sn: The device serial number
@@ -36,7 +36,7 @@ def create_device_info(
     return DeviceInfo(
         identifiers={(DOMAIN, device_sn)},
         name=device_name,
-        manufacturer="DessMonitor",
+        manufacturer="ValueClouds",
         model="Energy Storage Inverter",
         sw_version=firmware,
         serial_number=device_sn,
