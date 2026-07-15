@@ -336,15 +336,41 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
                 "Data update completed successfully: %d devices total", len(data)
             )
             return data
+        except DessMonitorError as err:
+            if self.api._is_auth_error(str(err)):
+                _LOGGER.warning("Auth error during update, clearing token and retrying")
+                self.api.token = None
+                await self.api.clear_saved_token()
+                try:
+                    collectors = await self._fetch_collectors()
+                    data = await self._gather_all_device_data(collectors)
+                    await self._merge_summary_data(data, bool(collectors))
+                    if not self.ctrl_value_cache:
+                        await self._prefetch_all_control_values(data)
+                    _LOGGER.info(
+                        "Data update completed after re-auth: %d devices total", len(data)
+                    )
+                    return data
+                except Exception as retry_err:
+                    _LOGGER.error("Retry after re-auth failed: %s", retry_err)
+                    raise UpdateFailed(
+                        f"Error communicating with ValueClouds API: {retry_err}"
+                    ) from retry_err
+            _LOGGER.error(
+                "Error communicating with ValueClouds API during update: %s", err
+            )
+            raise UpdateFailed(
+                f"Error communicating with ValueClouds API: {err}"
+            ) from err
         except UpdateFailed:
             raise
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error(
-                "Error communicating with DessMonitor API during update: %s", err
+                "Error communicating with ValueClouds API during update: %s", err
             )
             _LOGGER.debug("Data update error details", exc_info=True)
             raise UpdateFailed(
-                f"Error communicating with DessMonitor API: {err}"
+                f"Error communicating with ValueClouds API: {err}"
             ) from err
 
     async def _fetch_collectors(self) -> list[dict[str, Any]]:

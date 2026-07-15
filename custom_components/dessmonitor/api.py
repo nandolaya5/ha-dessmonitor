@@ -248,6 +248,21 @@ class DessMonitorAPI:
             raise DessMonitorError(error_msg)
         return data
 
+    @staticmethod
+    def _is_auth_error(error_msg: str) -> bool:
+        """Check if an error message indicates an authentication issue."""
+        auth_keywords = [
+            "token",
+            "auth",
+            "login",
+            "session",
+            "expired",
+            "unauthorized",
+            "forbidden",
+        ]
+        error_lower = error_msg.lower()
+        return any(keyword in error_lower for keyword in auth_keywords)
+
     async def authenticate(self) -> bool:
         """Authenticate with the ValueClouds API."""
         _LOGGER.debug(
@@ -402,8 +417,8 @@ class DessMonitorAPI:
         try:
             return await self._async_fetch_device_data()
         except DessMonitorError as err:
-            if "token" in str(err).lower() or "auth" in str(err).lower():
-                _LOGGER.debug("Token rejected, re-authenticating and retrying once")
+            if self._is_auth_error(str(err)):
+                _LOGGER.warning("Token rejected, re-authenticating and retrying once")
                 await self.authenticate()
                 return await self._async_fetch_device_data()
             raise
