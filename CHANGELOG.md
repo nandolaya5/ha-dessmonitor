@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-07-15
+
+### Fixed
+- API response validation: `queryDeviceOneDataxxx` returns `code: 0` without a `success` field, which was incorrectly treated as a failure.
+- Added configurable `devaddr` parameter (default: `4`) — required because different devices use different addresses (e.g. `4` vs `255`).
+
 ## [2.3.0] - 2026-07-15
 
 ### Changed
