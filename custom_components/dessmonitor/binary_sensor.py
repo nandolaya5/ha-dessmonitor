@@ -46,6 +46,15 @@ async def async_setup_entry(
                 )
             )
 
+            entities.append(
+                GridStatusSensor(
+                    coordinator=coordinator,
+                    device_sn=device_sn,
+                    device_meta=device_meta,
+                    collector_meta=collector_meta,
+                )
+            )
+
             for data_point in device_data:
                 sensor_type = data_point.get("title")
                 if sensor_type in BINARY_SENSOR_TYPES:
@@ -180,5 +189,79 @@ class DessMonitorStatusSensor(CoordinatorEntity, BinarySensorEntity):
                 attrs["last_seen"] = data_point.get("val")
             elif data_point.get("title") == "Operating mode":
                 attrs["operating_mode"] = data_point.get("val")
+
+        return attrs if attrs else None
+
+
+class GridStatusSensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor that indicates when the grid is down (off-grid mode)."""
+
+    def __init__(
+        self,
+        coordinator: DessMonitorDataUpdateCoordinator,
+        device_sn: str,
+        device_meta: dict[str, Any],
+        collector_meta: dict[str, Any],
+    ) -> None:
+        """Initialize the grid status sensor."""
+        super().__init__(coordinator)
+
+        self._device_sn = device_sn
+        self._device_meta = device_meta
+        self._collector_meta = collector_meta
+        self._attr_name = f"{device_meta.get('alias', 'Inverter')} Grid Down"
+        self._attr_unique_id = f"{device_sn}_grid_down"
+        self._attr_device_class = "power"
+        self._attr_icon = "mdi:transmission-tower-off"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return create_device_info(
+            self._device_sn, self._device_meta, self._collector_meta
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true when grid is down (off-grid mode)."""
+        if not self.coordinator.data:
+            return None
+
+        device_info = self.coordinator.data.get(self._device_sn)
+        if not device_info:
+            return None
+
+        device_data = device_info.get("data", [])
+
+        for data_point in device_data:
+            title = data_point.get("title", "")
+            value = data_point.get("val", "").lower()
+
+            if title == "Operating mode":
+                if "off-grid" in value or "battery" in value:
+                    return True
+                return False
+
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        if not self.coordinator.data:
+            return None
+
+        device_info = self.coordinator.data.get(self._device_sn)
+        if not device_info:
+            return None
+
+        device_data = device_info.get("data", [])
+        attrs = {}
+
+        for data_point in device_data:
+            title = data_point.get("title", "")
+            if title == "Operating mode":
+                attrs["operating_mode"] = data_point.get("val")
+            elif title == "Grid Power":
+                attrs["grid_power"] = data_point.get("val")
 
         return attrs if attrs else None

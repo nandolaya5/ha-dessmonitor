@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-07-15
+
+### Added
+- Grid Down binary sensor — detects when the grid is unavailable (off-grid mode) and triggers automations.
+
 ## [2.3.3] - 2026-07-15
 
 ### Added
