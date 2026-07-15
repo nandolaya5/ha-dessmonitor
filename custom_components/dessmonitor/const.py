@@ -10,9 +10,11 @@ CONF_PASSWORD: Final = "password"
 CONF_PN: Final = "pn"
 CONF_SN: Final = "sn"
 CONF_DEVCODE: Final = "devcode"
+CONF_DEVADDR: Final = "devaddr"
 CONF_UPDATE_INTERVAL: Final = "update_interval"
 
 DEFAULT_UPDATE_INTERVAL: Final = 300
+DEFAULT_DEVADDR: Final = "4"
 MIN_UPDATE_INTERVAL: Final = 60
 MAX_UPDATE_INTERVAL: Final = 3600
 
@@ -29,7 +31,6 @@ LOGIN_ENDPOINT: Final = "ppr/web/login/login"
 DEVICE_ONE_DATA_ENDPOINT: Final = "ppe/api/auth/web/queryDeviceOneDataxxx"
 HEADER_PROJECT: Final = "IOT"
 DEFAULT_I18N: Final = "en_US"
-DEFAULT_DEVADDR: Final = "255"
 
 UNITS: Final = {
     "POWER": "W",

@@ -12,7 +12,7 @@ import aiohttp
 import async_timeout
 from homeassistant.helpers.storage import Store
 
-from .const import API_BASE_URL, DEFAULT_I18N, HEADER_PROJECT, UNITS, VERSION
+from .const import API_BASE_URL, DEFAULT_DEVADDR, DEFAULT_I18N, HEADER_PROJECT, UNITS, VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ class DessMonitorAPI:
         pn: str = "",
         sn: str = "",
         devcode: str = "",
+        devaddr: str = "",
         session: aiohttp.ClientSession | None = None,
         store: Store | None = None,
     ) -> None:
@@ -46,6 +47,7 @@ class DessMonitorAPI:
         self.pn = pn
         self.sn = sn
         self.devcode = devcode
+        self.devaddr = devaddr or DEFAULT_DEVADDR
         self.base_url = API_BASE_URL
 
         self._session = session
@@ -231,12 +233,15 @@ class DessMonitorAPI:
     @staticmethod
     def _validate_api_response(action: str, data: dict[str, Any]) -> dict[str, Any]:
         """Validate API payload and raise errors when needed."""
-        if data.get("success") is False:
-            error_code = data.get("code")
-            error_msg = data.get("message") or data.get("errorMessage") or f"API error {error_code}"
+        code = data.get("code")
+        success = data.get("success")
+        _LOGGER.debug("API response for '%s': success=%s, code=%s", action, success, code)
+
+        if success is False or (success is None and code is not None and code != 0):
+            error_msg = data.get("message") or data.get("errorMessage") or f"API error {code}"
             _LOGGER.error(
                 "API returned error %s for action '%s': %s",
-                error_code,
+                code,
                 action,
                 error_msg,
             )
@@ -274,12 +279,25 @@ class DessMonitorAPI:
 
             response = await self._make_post_request("ppr/web/login/login", payload)
 
-            if not response.get("success"):
+            _LOGGER.debug("Login response: %s", {
+                "success": response.get("success"),
+                "code": response.get("code"),
+                "message": response.get("message"),
+                "has_data": "data" in response,
+            })
+
+            if response.get("success") is False or (
+                response.get("success") is None
+                and response.get("code") is not None
+                and response.get("code") != 0
+            ):
+                error_code = response.get("code")
                 error_msg = (
                     response.get("message")
                     or response.get("errorMessage")
-                    or "Login was rejected"
+                    or f"Login failed with code {error_code}"
                 )
+                _LOGGER.error("Login rejected: code=%s, message=%s", error_code, error_msg)
                 raise DessMonitorError(error_msg)
 
             data = response.get("data") or {}
@@ -396,16 +414,23 @@ class DessMonitorAPI:
             "pn": self.pn,
             "sn": self.sn,
             "devcode": self.devcode,
-            "devaddr": "255",
+            "devaddr": self.devaddr,
             "i18n": DEFAULT_I18N,
         }
+
+        _LOGGER.debug("Fetching device data with params: pn=%s, sn=%s, devcode=%s", 
+                      _mask_identifier(self.pn), _mask_identifier(self.sn), self.devcode)
 
         response = await self._make_request(
             "ppe/api/auth/web/queryDeviceOneDataxxx", params
         )
 
+        _LOGGER.debug("Device data response: success=%s, has_data=%s", 
+                      response.get("success"), "data" in response)
+
         fields = response.get("data")
         if not isinstance(fields, list):
+            _LOGGER.error("Device data response 'data' is not a list: %s", type(fields))
             raise DessMonitorError("Device data response 'data' was not a list")
 
         _LOGGER.debug("Retrieved %d data points for device", len(fields))

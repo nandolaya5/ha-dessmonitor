@@ -16,7 +16,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DessMonitorAPI, DessMonitorError
-from .const import CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, DOMAIN, UNITS
+from .const import CONF_UPDATE_INTERVAL, DEFAULT_DEVADDR, DEFAULT_UPDATE_INTERVAL, DOMAIN, UNITS
 from .device_support import (
     get_parameter_sensor_names,
     is_devcode_supported,
@@ -74,6 +74,7 @@ def _create_api_client(hass: HomeAssistant, entry: ConfigEntry) -> DessMonitorAP
     pn = entry.data.get("pn", "")
     sn = entry.data.get("sn", "")
     devcode = entry.data.get("devcode", "")
+    devaddr = entry.data.get("devaddr", DEFAULT_DEVADDR)
     _LOGGER.debug("Initializing API client for user: %s", username)
 
     store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_auth")
@@ -84,6 +85,7 @@ def _create_api_client(hass: HomeAssistant, entry: ConfigEntry) -> DessMonitorAP
         pn=pn,
         sn=sn,
         devcode=devcode,
+        devaddr=devaddr,
         store=store,
     )
 

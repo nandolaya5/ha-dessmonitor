@@ -15,11 +15,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import DessMonitorAPI, DessMonitorError
 from .const import (
     CONF_DEVCODE,
+    CONF_DEVADDR,
     CONF_PASSWORD,
     CONF_PN,
     CONF_SN,
     CONF_UPDATE_INTERVAL,
     CONF_USERNAME,
+    DEFAULT_DEVADDR,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     UPDATE_INTERVAL_OPTIONS,
@@ -43,6 +45,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_PN): vol.All(str, vol.Length(min=1, max=100)),
         vol.Required(CONF_SN): vol.All(str, vol.Length(min=1, max=100)),
         vol.Required(CONF_DEVCODE): vol.All(str, vol.Length(min=1, max=20)),
+        vol.Optional(CONF_DEVADDR, default=DEFAULT_DEVADDR): vol.All(str, vol.Length(min=1, max=10)),
         vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
             vol.Coerce(int), vol.In(UPDATE_INTERVAL_OPTIONS)
         ),
@@ -71,6 +74,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         pn=data[CONF_PN],
         sn=data[CONF_SN],
         devcode=data[CONF_DEVCODE],
+        devaddr=data.get(CONF_DEVADDR, DEFAULT_DEVADDR),
         session=session,
     )
 

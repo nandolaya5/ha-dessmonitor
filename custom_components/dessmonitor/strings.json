@@ -10,6 +10,7 @@
           "pn": "PN (Collector Number)",
           "sn": "SN (Device Serial Number)",
           "devcode": "Devcode (Protocol Code)",
+          "devaddr": "Devaddr (Device Address)",
           "update_interval": "Update interval (seconds)"
         },
         "data_description": {
@@ -17,7 +18,8 @@
           "password": "Your ValueClouds account password",
           "pn": "The PN value from your device (found in DevTools Network tab)",
           "sn": "The SN/serial number of your inverter",
-          "devcode": "The device protocol code (e.g. 6422, 6409)",
+          "devcode": "The device protocol code (e.g. 23250, 6409)",
+          "devaddr": "Device address from DevTools (typically 4 or 255)",
           "update_interval": "How often to fetch data from ValueClouds. Default is 300 seconds (5 minutes)."
         }
       }
