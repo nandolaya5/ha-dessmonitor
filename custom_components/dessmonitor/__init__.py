@@ -199,7 +199,8 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
         self.ctrl_field_cache: dict[str, dict[str, Any]] = {}
         self.ctrl_value_cache: dict[str, dict[str, str]] = {}
         self._ctrl_locks: dict[str, asyncio.Lock] = {}
-        self.param_cache: dict[str, dict[str, Any]] = {}
+        self.param_cache: dict[str, dict[str, Any]} = {}
+        self.energy_flow: dict[str, Any] = {}
         super().__init__(
             hass,
             _LOGGER,
@@ -327,6 +328,15 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
             data = await self._gather_all_device_data(collectors)
             await self._merge_summary_data(data, bool(collectors))
 
+            # Fetch energy flow data
+            try:
+                energy_flow = await self.api.get_energy_flow()
+                self.energy_flow = energy_flow
+                _LOGGER.debug("Energy flow data fetched successfully")
+            except Exception as err:
+                _LOGGER.warning("Failed to fetch energy flow data: %s", err)
+                self.energy_flow = {}
+
             # Pre-populate control value cache on first refresh so platform
             # setup (select.py / number.py) reads from cache instantly.
             if not self.ctrl_value_cache:
@@ -345,6 +355,11 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
                     collectors = await self._fetch_collectors()
                     data = await self._gather_all_device_data(collectors)
                     await self._merge_summary_data(data, bool(collectors))
+                    try:
+                        energy_flow = await self.api.get_energy_flow()
+                        self.energy_flow = energy_flow
+                    except Exception:
+                        self.energy_flow = {}
                     if not self.ctrl_value_cache:
                         await self._prefetch_all_control_values(data)
                     _LOGGER.info(

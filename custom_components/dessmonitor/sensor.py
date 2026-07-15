@@ -576,13 +576,11 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         self._collector_meta = collector_meta
         self._sensor_id = sensor_id
         self._config = config
-        self._value = initial_value
-        self._unit = initial_unit or config.get("unit", "")
 
         self._attr_name = f"{device_meta.get('alias', 'Inverter')} {config['name']}"
         self._attr_unique_id = f"{DOMAIN}_{device_sn}_{sensor_id}"
         self._attr_icon = config.get("icon")
-        self._attr_unit_of_measurement = self._unit
+        self._attr_unit_of_measurement = initial_unit or config.get("unit", "")
         self._attr_state_class = (
             SensorStateClass.MEASUREMENT
             if config.get("state_class") == "measurement"
@@ -604,32 +602,39 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return the sensor value."""
-        if self._value is None:
+        """Return the sensor value from coordinator's energy flow data."""
+        energy_flow = getattr(self.coordinator, 'energy_flow', {})
+        if not energy_flow:
             return None
-        try:
-            return float(self._value)
-        except (ValueError, TypeError):
-            return None
+
+        section = self._config["section"]
+        key = self._config["key"]
+        section_data = energy_flow.get(section, [])
+
+        for item in section_data:
+            if item.get("par") == key:
+                try:
+                    return float(item.get("val", 0))
+                except (ValueError, TypeError):
+                    return None
+
+        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return additional state attributes."""
-        return {"source": "energy_flow", "section": self._config.get("section")}
+        energy_flow = getattr(self.coordinator, 'energy_flow', {})
+        section = self._config["section"]
+        key = self._config["key"]
+        section_data = energy_flow.get(section, [])
 
-    async def async_update(self) -> None:
-        """Update the sensor from energy flow data."""
-        try:
-            energy_flow = await self.coordinator.api.get_energy_flow()
-            if energy_flow:
-                section = self._config["section"]
-                key = self._config["key"]
-                section_data = energy_flow.get(section, [])
-                for item in section_data:
-                    if item.get("par") == key:
-                        self._value = item.get("val")
-                        self._unit = item.get("unit", self._config.get("unit", ""))
-                        self._attr_unit_of_measurement = self._unit
-                        break
-        except Exception as err:
-            _LOGGER.debug("Failed to update energy flow sensor %s: %s", self._sensor_id, err)
+        for item in section_data:
+            if item.get("par") == key:
+                return {
+                    "source": "energy_flow",
+                    "section": section,
+                    "raw_value": item.get("val"),
+                    "unit": item.get("unit"),
+                }
+
+        return {"source": "energy_flow", "section": section}
