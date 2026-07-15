@@ -503,6 +503,25 @@ class DessMonitorAPI:
         """Get device parameters - not available in ValueClouds API v1."""
         return {}
 
+    async def get_energy_flow(self) -> dict[str, Any]:
+        """Get energy flow data from queryDeviceEnergyFlow endpoint."""
+        params = {
+            "pn": self.pn,
+            "sn": self.sn,
+            "devcode": self.devcode,
+            "devaddr": self.devaddr,
+            "i18n": DEFAULT_I18N,
+        }
+
+        _LOGGER.debug("Fetching energy flow data")
+
+        response = await self._make_request(
+            "ppe/api/auth/web/queryDeviceEnergyFlow", params
+        )
+
+        _LOGGER.debug("Energy flow response received")
+        return response.get("data", {})
+
     async def get_device_control_value(
         self, pn: str, devcode: int, devaddr: int, sn: str, field_id: str
     ) -> dict[str, Any]:

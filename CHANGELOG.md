@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-07-15
+
+### Added
+- Energy flow sensors from `queryDeviceEnergyFlow` endpoint: Battery SOC, Battery Power, PV Power, Grid Power, Load Power — these are the sensors needed for the power flow dashboard card.
+
 ## [2.3.2] - 2026-07-15
 
 ### Fixed

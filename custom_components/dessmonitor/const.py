@@ -698,3 +698,52 @@ BINARY_SENSOR_TYPES: dict = {}
 # Reserved for future diagnostic sensor types
 # Not currently used but maintained for future expansion
 DIAGNOSTIC_SENSOR_TYPES: dict = {}
+
+# Energy flow sensors from queryDeviceEnergyFlow endpoint
+ENERGY_FLOW_SENSORS = {
+    "battery_capacity": {
+        "key": "bt_battery_capacity",
+        "section": "bt_status",
+        "name": "Battery SOC",
+        "unit": "%",
+        "device_class": "battery",
+        "state_class": "measurement",
+        "icon": "mdi:battery-high",
+    },
+    "battery_power_flow": {
+        "key": "battery_active_power",
+        "section": "bt_status",
+        "name": "Battery Power Flow",
+        "unit": "W",
+        "device_class": "power",
+        "state_class": "measurement",
+        "icon": "mdi:battery",
+    },
+    "pv_power_flow": {
+        "key": "pv_output_power",
+        "section": "pv_status",
+        "name": "PV Power Flow",
+        "unit": "kW",
+        "device_class": "power",
+        "state_class": "measurement",
+        "icon": "mdi:solar-power",
+    },
+    "grid_power_flow": {
+        "key": "grid_active_power",
+        "section": "gd_status",
+        "name": "Grid Power Flow",
+        "unit": "W",
+        "device_class": "power",
+        "state_class": "measurement",
+        "icon": "mdi:transmission-tower",
+    },
+    "load_power_flow": {
+        "key": "load_active_power",
+        "section": "bc_status",
+        "name": "Load Power Flow",
+        "unit": "kW",
+        "device_class": "power",
+        "state_class": "measurement",
+        "icon": "mdi:home-lightning-bolt",
+    },
+}

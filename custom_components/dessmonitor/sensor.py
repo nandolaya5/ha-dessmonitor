@@ -26,7 +26,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import DessMonitorDataUpdateCoordinator
-from .const import DOMAIN, SENSOR_TYPES, UNITS
+from .const import DOMAIN, ENERGY_FLOW_SENSORS, SENSOR_TYPES, UNITS
 from .device_support import apply_devcode_transformations, is_devcode_supported
 from .utils import create_device_info
 
@@ -223,6 +223,31 @@ async def async_setup_entry(
             supported_sensors,
             duplicate_sensors,
         )
+
+    # Add energy flow sensors from queryDeviceEnergyFlow endpoint
+    try:
+        energy_flow = await coordinator.api.get_energy_flow()
+        if energy_flow:
+            for sensor_id, config in ENERGY_FLOW_SENSORS.items():
+                section = config["section"]
+                key = config["key"]
+                section_data = energy_flow.get(section, [])
+                for item in section_data:
+                    if item.get("par") == key:
+                        entities.append(
+                            EnergyFlowSensor(
+                                coordinator=coordinator,
+                                device_sn=list(coordinator_data.keys())[0] if coordinator_data else "unknown",
+                                sensor_id=sensor_id,
+                                config=config,
+                                initial_value=item.get("val"),
+                                initial_unit=item.get("unit", config.get("unit", "")),
+                            )
+                        )
+                        _LOGGER.debug("Created energy flow sensor: %s", config["name"])
+                        break
+    except Exception as err:
+        _LOGGER.warning("Failed to fetch energy flow data: %s", err)
 
     _LOGGER.info("Adding %d total sensors to Home Assistant", len(entities))
     async_add_entities(entities, True)
@@ -521,3 +546,72 @@ class DessMonitorSensor(CoordinatorEntity, SensorEntity):
                     attrs["operating_mode"] = data_point.get("val")
 
         return attrs if attrs else None
+
+
+class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
+    """Representation of a ValueClouds Energy Flow sensor."""
+
+    def __init__(
+        self,
+        coordinator: DessMonitorDataUpdateCoordinator,
+        device_sn: str,
+        sensor_id: str,
+        config: dict[str, Any],
+        initial_value: str | None = None,
+        initial_unit: str = "",
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._device_sn = device_sn
+        self._sensor_id = sensor_id
+        self._config = config
+        self._value = initial_value
+        self._unit = initial_unit or config.get("unit", "")
+
+        self._attr_name = config["name"]
+        self._attr_unique_id = f"{DOMAIN}_{device_sn}_{sensor_id}"
+        self._attr_icon = config.get("icon")
+        self._attr_unit_of_measurement = self._unit
+        self._attr_state_class = (
+            SensorStateClass.MEASUREMENT
+            if config.get("state_class") == "measurement"
+            else None
+        )
+
+        device_class = config.get("device_class")
+        if device_class:
+            self._attr_device_class = getattr(
+                SensorDeviceClass, device_class.upper(), None
+            )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the sensor value."""
+        if self._value is None:
+            return None
+        try:
+            return float(self._value)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return additional state attributes."""
+        return {"source": "energy_flow", "section": self._config.get("section")}
+
+    async def async_update(self) -> None:
+        """Update the sensor from energy flow data."""
+        try:
+            energy_flow = await self.coordinator.api.get_energy_flow()
+            if energy_flow:
+                section = self._config["section"]
+                key = self._config["key"]
+                section_data = energy_flow.get(section, [])
+                for item in section_data:
+                    if item.get("par") == key:
+                        self._value = item.get("val")
+                        self._unit = item.get("unit", self._config.get("unit", ""))
+                        self._attr_unit_of_measurement = self._unit
+                        break
+        except Exception as err:
+            _LOGGER.debug("Failed to update energy flow sensor %s: %s", self._sensor_id, err)
