@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-07-15
+
+### Changed
+- **Migrated from DessMonitor API to ValueClouds API** - The integration now connects to `api.valueclouds.com` instead of `api.dessmonitor.com`. This is a complete rewrite of the API client.
+- Authentication changed from GET with SHA-1 signatures to POST JSON login with token-based authentication.
+- Configuration now requires **PN**, **SN**, and **devcode** values (obtained from browser DevTools on valueclouds.com) instead of email/password/company_key.
+- Updated UI strings and manifest to reference "ValueClouds" instead of "DessMonitor".
+
+### Notes
+- The DOMAIN remains `dessmonitor` for backward compatibility with existing configs.
+- ValueClouds API v1 only supports read-only data - remote control entities (select/number) are not available in this version.
+
 ## [2.2.0] - 2026-06-20
 
 ### Added
