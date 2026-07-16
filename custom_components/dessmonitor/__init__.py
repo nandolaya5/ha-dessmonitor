@@ -16,20 +16,11 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DessMonitorAPI, DessMonitorError
-from .const import CONF_UPDATE_INTERVAL, DEFAULT_DEVADDR, DEFAULT_UPDATE_INTERVAL, DOMAIN, UNITS
-from .device_support import (
-    get_parameter_sensor_names,
-    is_devcode_supported,
-    map_sensor_title,
-    needs_parameter_fetch,
-)
+from .const import CONF_UPDATE_INTERVAL, DEFAULT_DEVADDR, DEFAULT_UPDATE_INTERVAL, DOMAIN
 
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
-    Platform.BUTTON,
-    Platform.NUMBER,
-    Platform.SELECT,
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -196,10 +187,6 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Initialize."""
         self.api = api
-        self.ctrl_field_cache: dict = {}
-        self.ctrl_value_cache: dict = {}
-        self._ctrl_locks: dict = {}
-        self.param_cache: dict = {}
         self.energy_flow: dict = {}
         super().__init__(
             hass,
@@ -208,139 +195,20 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval),
         )
 
-    async def async_get_controls_with_values(
-        self, pn: str, devcode: int, devaddr: int, sn: str
-    ) -> tuple[dict[str, Any], dict[str, str]]:
-        """Get control field definitions and their current values.
-
-        Returns (controls, current_values) where current_values maps
-        field_id -> current value string.  Both are cached so repeated
-        calls (select.py + number.py) don't re-fetch.  A per-device
-        lock prevents the duplicate fetch that would otherwise occur
-        when both platforms start concurrently.
-        """
-        if sn not in self._ctrl_locks:
-            self._ctrl_locks[sn] = asyncio.Lock()
-
-        async with self._ctrl_locks[sn]:
-            if sn not in self.ctrl_field_cache:
-                try:
-                    self.ctrl_field_cache[sn] = (
-                        await self.api.get_device_control_fields(
-                            pn, devcode, devaddr, sn
-                        )
-                    )
-                except Exception as err:
-                    _LOGGER.warning(
-                        "Failed to fetch control fields for device %s: %s",
-                        sn,
-                        err,
-                    )
-                    self.ctrl_field_cache[sn] = {}
-
-            controls = self.ctrl_field_cache[sn]
-
-            if sn not in self.ctrl_value_cache:
-                field_ids = [cfg["id"] for cfg in controls.values() if cfg.get("id")]
-                self.ctrl_value_cache[sn] = await self._fetch_all_control_values(
-                    pn, devcode, devaddr, sn, field_ids
-                )
-
-        return controls, self.ctrl_value_cache[sn]
-
-    async def _fetch_all_control_values(
-        self,
-        pn: str,
-        devcode: int,
-        devaddr: int,
-        sn: str,
-        field_ids: list[str],
-    ) -> dict[str, str]:
-        """Fetch current values for all control fields in parallel."""
-        if not field_ids:
-            return {}
-
-        sem = asyncio.Semaphore(5)
-
-        async def _fetch_one(field_id: str) -> tuple[str, str | None]:
-            async with sem:
-                try:
-                    result = await self.api.get_device_control_value(
-                        pn, devcode, devaddr, sn, field_id
-                    )
-                    return field_id, result.get("val")
-                except Exception as err:
-                    _LOGGER.debug(
-                        "Failed to read control value %s for %s: %s",
-                        field_id,
-                        sn,
-                        err,
-                    )
-                    return field_id, None
-
-        _LOGGER.info("Fetching %d control values for device %s", len(field_ids), sn)
-        results = await asyncio.gather(*[_fetch_one(fid) for fid in field_ids])
-        values = {fid: val for fid, val in results if val is not None}
-        _LOGGER.info(
-            "Fetched %d/%d control values for device %s",
-            len(values),
-            len(field_ids),
-            sn,
-        )
-        return values
-
-    async def _prefetch_all_control_values(self, data: dict[str, Any]) -> None:
-        """Pre-populate control caches for all devices in parallel.
-
-        Called once during the first coordinator refresh so that platform
-        setup (select.py / number.py) finds the cache already warm and
-        returns instantly instead of fetching per-device sequentially.
-        """
-        devices_to_fetch: list[tuple[str, str, int, int]] = []
-        for device_sn, device_info in data.items():
-            device_meta = device_info.get("device", {})
-            collector_meta = device_info.get("collector", {})
-            pn = collector_meta.get("pn")
-            devcode = _normalize_devcode(device_meta.get("devcode"))
-            devaddr = device_meta.get("devaddr")
-            if pn and devcode is not None and devaddr is not None:
-                devices_to_fetch.append((device_sn, pn, devcode, devaddr))
-
-        if not devices_to_fetch:
-            return
-
-        _LOGGER.info(
-            "Pre-fetching control values for %d devices", len(devices_to_fetch)
-        )
-
-        async def _fetch_device(sn: str, pn: str, devcode: int, devaddr: int) -> None:
-            await self.async_get_controls_with_values(pn, devcode, devaddr, sn)
-
-        await asyncio.gather(
-            *[_fetch_device(sn, pn, dc, da) for sn, pn, dc, da in devices_to_fetch]
-        )
-
     async def _async_update_data(self):
         """Update data via library."""
         _LOGGER.debug("Starting data update cycle")
         try:
             collectors = await self._fetch_collectors()
             data = await self._gather_all_device_data(collectors)
-            await self._merge_summary_data(data, bool(collectors))
 
-            # Fetch energy flow data
             try:
                 energy_flow = await self.api.get_energy_flow()
                 self.energy_flow = energy_flow
-                _LOGGER.debug("Energy flow data: %s", energy_flow)
+                _LOGGER.debug("Energy flow data received")
             except Exception as err:
                 _LOGGER.warning("Failed to fetch energy flow data: %s", err)
                 self.energy_flow = {}
-
-            # Pre-populate control value cache on first refresh so platform
-            # setup (select.py / number.py) reads from cache instantly.
-            if not self.ctrl_value_cache:
-                await self._prefetch_all_control_values(data)
 
             _LOGGER.info(
                 "Data update completed successfully: %d devices total", len(data)
@@ -354,14 +222,11 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
                 try:
                     collectors = await self._fetch_collectors()
                     data = await self._gather_all_device_data(collectors)
-                    await self._merge_summary_data(data, bool(collectors))
                     try:
                         energy_flow = await self.api.get_energy_flow()
                         self.energy_flow = energy_flow
                     except Exception:
                         self.energy_flow = {}
-                    if not self.ctrl_value_cache:
-                        await self._prefetch_all_control_values(data)
                     _LOGGER.info(
                         "Data update completed after re-auth: %d devices total", len(data)
                     )
@@ -472,33 +337,15 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
         device: dict[str, Any],
         devcode: int | None,
     ) -> list[dict[str, Any]]:
-        """Fetch latest datapoints for a single device.
-
-        When the devcode declares ``parameter_sensor_names``, the parameters
-        endpoint is queried in parallel and matching entries are merged into
-        the result so that sensors like *Battery percentage* (SOC) become
-        available even though they are absent from ``queryDeviceLastData``.
-        """
+        """Fetch latest datapoints for a single device."""
         device_sn = device["sn"]
 
-        if devcode is not None and needs_parameter_fetch(devcode):
-            last_data, param_points = await asyncio.gather(
-                self.api.get_device_last_data(
-                    pn=collector_id,
-                    devcode=device["devcode"],
-                    devaddr=device["devaddr"],
-                    sn=device_sn,
-                ),
-                self._fetch_device_parameter_data(collector_id, device, devcode),
-            )
-            self._merge_parameter_data(last_data, param_points, devcode, device_sn)
-        else:
-            last_data = await self.api.get_device_last_data(
-                pn=collector_id,
-                devcode=device["devcode"],
-                devaddr=device["devaddr"],
-                sn=device_sn,
-            )
+        last_data = await self.api.get_device_last_data(
+            pn=collector_id,
+            devcode=device["devcode"],
+            devaddr=device["devaddr"],
+            sn=device_sn,
+        )
 
         _LOGGER.debug(
             "Stored data for device %s with %d data points",
@@ -506,168 +353,6 @@ class DessMonitorDataUpdateCoordinator(DataUpdateCoordinator):
             len(last_data),
         )
         return last_data
-
-    async def _fetch_device_parameter_data(
-        self,
-        collector_id: str,
-        device: dict[str, Any],
-        devcode: int,
-    ) -> list[dict[str, Any]]:
-        """Fetch parameter data and convert wanted entries to data-point format.
-
-        Returns an empty list on error so that a failure here never blocks
-        the primary data fetch.
-        """
-        wanted_names = get_parameter_sensor_names(devcode)
-        try:
-            params = await self.api.get_device_parameters(
-                pn=collector_id,
-                devcode=device["devcode"],
-                devaddr=device["devaddr"],
-                sn=device["sn"],
-            )
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.warning(
-                "Failed to fetch parameter data for device %s: %s",
-                device["sn"],
-                err,
-            )
-            return []
-
-        points: list[dict[str, Any]] = []
-        for name, info in params.items():
-            if name in wanted_names:
-                points.append(
-                    {
-                        "title": name,
-                        "val": info.get("value", ""),
-                        "unit": info.get("unit", ""),
-                    }
-                )
-        return points
-
-    def _merge_parameter_data(
-        self,
-        last_data: list[dict[str, Any]],
-        param_points: list[dict[str, Any]],
-        devcode: int,
-        device_sn: str,
-    ) -> None:
-        """Merge parameter-sourced data points into *last_data* (in place).
-
-        Duplicates are detected by checking both the raw title and its
-        devcode-mapped variant, matching the logic used in
-        ``_merge_summary_data``.
-        """
-        if not param_points:
-            return
-
-        existing_titles: set[str] = set()
-        for point in last_data:
-            title = point.get("title")
-            if title:
-                existing_titles.add(title)
-        mapped_titles: set[str] = {
-            map_sensor_title(devcode, title) for title in existing_titles if title
-        }
-        existing_titles.update(mapped_titles)
-
-        merged: list[str] = []
-        for point in param_points:
-            title = point.get("title", "")
-            mapped = map_sensor_title(devcode, title)
-            if title not in existing_titles and mapped not in existing_titles:
-                last_data.append(point)
-                existing_titles.add(title)
-                existing_titles.add(mapped)
-                merged.append(title)
-
-        if merged:
-            _LOGGER.debug(
-                "Merged %d parameter sensors (%s) for device %s",
-                len(merged),
-                ", ".join(merged),
-                device_sn,
-            )
-
-    async def _merge_summary_data(
-        self, data: dict[str, Any], collectors_present: bool
-    ) -> None:
-        """Merge summary dashboard data into the regular payload."""
-        if not collectors_present:
-            return
-
-        summary_data = await self._fetch_summary_payload()
-        if not summary_data:
-            return
-
-        for device_sn, device_info in data.items():
-            summary_points = summary_data.get(device_sn, {}).get("data", [])
-            if not summary_points:
-                continue
-
-            device_meta = device_info.get("device", {})
-            devcode = _normalize_devcode(device_meta.get("devcode"))
-            devcode_supported = devcode is not None and is_devcode_supported(devcode)
-
-            existing_data = device_info["data"]
-            existing_titles = {
-                point.get("title") for point in existing_data if point.get("title")
-            }
-
-            # Also track mapped titles so "Today generation" and "energyToday"
-            # are treated as the same sensor and avoid duplicate entity warnings.
-            mapped_titles: set[str | None] = set()
-            if devcode_supported and devcode is not None:
-                mapped_titles = {
-                    map_sensor_title(devcode, title)
-                    for title in existing_titles
-                    if title
-                }
-            existing_titles.update({title for title in mapped_titles if title})
-
-            unique_summary_points = [
-                point
-                for point in summary_points
-                if point.get("title")
-                and point.get("title") not in existing_titles
-                and (
-                    not devcode_supported
-                    or devcode is None
-                    or map_sensor_title(devcode, point.get("title"))
-                    not in existing_titles
-                )
-            ]
-
-            if not unique_summary_points:
-                _LOGGER.debug(
-                    "Skipping summary merge for %s (%s) because all titles already exist",
-                    device_info.get("device", {}).get("alias", "Unknown"),
-                    device_sn,
-                )
-                continue
-
-            existing_data.extend(unique_summary_points)
-            existing_titles.update(
-                point.get("title") for point in unique_summary_points
-            )
-
-            device_alias = device_info.get("device", {}).get("alias", "Unknown")
-            summary_types = [point.get("title") for point in unique_summary_points]
-            _LOGGER.debug(
-                "Merged %d summary sensors (%s) for %s (%s)",
-                len(unique_summary_points),
-                ", ".join(summary_types),
-                device_alias,
-                device_sn,
-            )
-
-    async def _fetch_summary_payload(self) -> dict[str, Any] | None:
-        """Fetch summary data for dashboard sensors.
-        
-        Not available in ValueClouds API v1 - returns empty dict.
-        """
-        return {}
 
 
 async def async_get_device_diagnostics(
@@ -683,32 +368,6 @@ async def async_get_device_diagnostics(
     device_data = device_info.get("data", [])
 
     diagnostics = _build_base_diagnostics(device_sn, device_info, len(device_data))
-
-    config_values, status_values = _categorize_device_data(device_data)
-    diagnostics["configuration"].update(config_values)
-    diagnostics["status"].update(status_values)
-
-    (
-        control_config,
-        device_parameters,
-        control_error,
-    ) = await _fetch_control_details(coordinator, device_sn, device_info, device_data)
-
-    diagnostics["configuration"].update(control_config)
-    if device_parameters:
-        diagnostics["parameters"] = device_parameters
-    if control_error:
-        diagnostics["battery_config_error"] = control_error
-
-    diagnostics["summary"] = _build_diagnostics_summary(
-        coordinator, device_data, diagnostics
-    )
-
-    _LOGGER.debug(
-        "Generated diagnostics for device %s with %d config items",
-        device_sn,
-        len(diagnostics["configuration"]),
-    )
 
     return diagnostics
 
@@ -737,269 +396,5 @@ def _build_base_diagnostics(
             "device_code": device_meta.get("devcode"),
             "device_address": device_meta.get("devaddr"),
         },
-        "configuration": {},
-        "status": {},
         "raw_data_points": datapoint_count,
-    }
-
-
-CONFIG_KEYWORDS = {
-    "setting",
-    "priority",
-    "voltage setting",
-    "cutoff",
-    "capacity",
-    "type",
-    "configuration",
-}
-STATUS_KEYWORDS = {"status", "operating mode", "state", "online", "connectivity"}
-PRIORITY_MAPPINGS = {
-    "Output priority": {"SBU": 2, "UTI": 0, "SOL": 1, "SUB": 3},
-    "Charger Source Priority": {
-        "PV FIRST": 1,
-        "UTILITY FIRST": 0,
-        "PV_UTILITY": 2,
-        "PV ONLY": 3,
-    },
-}
-VOLTAGE_FALLBACKS = {
-    "High DC": "58.4 V (Est.)",
-    "Low DC": "44.0 V (Est.)",
-    "Bulk": "57.6 V (Est.)",
-    "Floating": "56.4 V (Est.)",
-}
-VOLTAGE_FIELD_NAMES = {
-    "High DC Protection Voltage",
-    "Bulk Charging Voltage",
-    "Floating Charging Voltage",
-    "Low DC Protection Voltage In Mains Mode",
-    "Low DC Protection Voltage In Off-Grid Mode",
-}
-
-
-def _categorize_device_data(
-    device_data: list[dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Split raw device data into configuration and status dictionaries."""
-    configuration: dict[str, Any] = {}
-    status: dict[str, Any] = {}
-
-    for data_point in device_data:
-        title = data_point.get("title", "")
-        value = data_point.get("val")
-        unit = data_point.get("unit", "")
-
-        normalized_title = title.lower()
-        if normalized_title in {"output priority", "charger source priority"} or any(
-            keyword in normalized_title for keyword in CONFIG_KEYWORDS
-        ):
-            configuration[title] = {"value": value, "unit": unit}
-        elif any(keyword in normalized_title for keyword in STATUS_KEYWORDS):
-            status[title] = {"value": value, "unit": unit}
-
-    return configuration, status
-
-
-async def _fetch_control_details(
-    coordinator: DessMonitorDataUpdateCoordinator,
-    device_sn: str,
-    device_info: dict[str, Any],
-    device_data: list[dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, Any], str | None]:
-    """Fetch control fields and parameters for diagnostics."""
-    collector_meta = device_info.get("collector", {})
-    device_meta = device_info.get("device", {})
-
-    try:
-        _LOGGER.debug("Fetching control fields and parameters for device %s", device_sn)
-        control_fields = await coordinator.api.get_device_control_fields(
-            pn=collector_meta.get("pn"),
-            devcode=device_meta.get("devcode"),
-            devaddr=device_meta.get("devaddr"),
-            sn=device_sn,
-        )
-        device_parameters = await coordinator.api.get_device_parameters(
-            pn=collector_meta.get("pn"),
-            devcode=device_meta.get("devcode"),
-            devaddr=device_meta.get("devaddr"),
-            sn=device_sn,
-        )
-    except Exception as err:  # pylint: disable=broad-except
-        _LOGGER.warning(
-            "Failed to fetch control fields/parameters for device %s: %s",
-            device_sn,
-            err,
-        )
-        return {}, {}, str(err)
-
-    formatted_fields = _format_control_fields(control_fields, device_data)
-    _LOGGER.debug(
-        "Added %d control fields and %d parameters to diagnostics for device %s",
-        len(formatted_fields),
-        len(device_parameters),
-        device_sn,
-    )
-    return formatted_fields, device_parameters, None
-
-
-def _format_control_fields(
-    control_fields: dict[str, Any], device_data: list[dict[str, Any]]
-) -> dict[str, Any]:
-    """Format control field metadata for diagnostics output."""
-    formatted: dict[str, Any] = {}
-
-    for field_name, field_data in control_fields.items():
-        if field_data.get("type") == "options":
-            formatted[field_name] = _format_option_field(
-                field_name, field_data, device_data
-            )
-        else:
-            formatted[field_name] = _format_numeric_field(
-                field_name, field_data, device_data
-            )
-
-    return formatted
-
-
-def _format_option_field(
-    field_name: str, field_data: dict[str, Any], device_data: list[dict[str, Any]]
-) -> dict[str, Any]:
-    """Format control fields that expose selectable options."""
-    sensor_value = _extract_sensor_value(device_data, field_name)
-    current_value = _resolve_option_value(
-        field_name, field_data, sensor_value, device_data
-    )
-
-    options_display = [
-        f"{opt['key']}: {opt['val']}" for opt in field_data.get("options", [])
-    ]
-
-    return {
-        "value": current_value,
-        "unit": "",
-        "options": options_display,
-        "id": field_data.get("id"),
-    }
-
-
-def _format_numeric_field(
-    field_name: str,
-    field_data: dict[str, Any],
-    device_data: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Format numeric control fields with sensible fallbacks."""
-    current_value = _extract_sensor_value(device_data, field_name, default="Not Set")
-
-    if field_name in VOLTAGE_FIELD_NAMES and current_value == "Not Set":
-        current_value = _estimate_voltage_value(field_name)
-
-    unit = ""
-    if "Voltage" in field_name:
-        unit = UNITS["VOLTAGE"]
-    elif "Current" in field_name:
-        unit = UNITS["CURRENT"]
-
-    return {
-        "value": current_value,
-        "unit": unit,
-        "id": field_data.get("id"),
-    }
-
-
-def _resolve_option_value(
-    field_name: str,
-    field_data: dict[str, Any],
-    sensor_value: Any,
-    device_data: list[dict[str, Any]],
-):
-    """Resolve option value with priority mappings when available."""
-    if sensor_value and field_name in PRIORITY_MAPPINGS:
-        desired_key = _match_priority_option(field_name, str(sensor_value))
-        if desired_key is not None:
-            return _lookup_option_value(field_data, desired_key)
-
-    if sensor_value:
-        return sensor_value
-
-    if field_name == "Output Voltage":
-        output_voltage = _extract_sensor_value(device_data, "Output Voltage")
-        if output_voltage is not None:
-            try:
-                voltage_key = str(float(output_voltage))
-            except (TypeError, ValueError):
-                voltage_key = str(output_voltage)
-            return _lookup_option_value(
-                field_data,
-                voltage_key,
-                fallback=f"{output_voltage} V (Custom)",
-            )
-
-    return "Not Set"
-
-
-def _match_priority_option(field_name: str, sensor_value: str) -> str | None:
-    """Match a human-readable sensor value to its option key."""
-    options = PRIORITY_MAPPINGS.get(field_name, {})
-    for option_text, option_key in options.items():
-        if sensor_value.upper() == option_text.upper():
-            return str(option_key)
-    return None
-
-
-def _lookup_option_value(
-    field_data: dict[str, Any], option_key: str, fallback: str | None = None
-) -> str:
-    """Return display value for a control option key."""
-    for option in field_data.get("options", []):
-        if option.get("key") == option_key:
-            return option.get("val", option_key)
-    return fallback or option_key
-
-
-def _extract_sensor_value(
-    device_data: list[dict[str, Any]], field_name: str, default: Any | None = None
-) -> Any:
-    """Pull matching sensor value from the latest device data."""
-    for data_point in device_data:
-        if data_point.get("title") == field_name:
-            return data_point.get("val")
-    return default
-
-
-def _estimate_voltage_value(field_name: str) -> str:
-    """Return voltage fallback based on field name heuristics."""
-    for key, value in VOLTAGE_FALLBACKS.items():
-        if key in field_name:
-            return value
-    return "Not Set"
-
-
-def _build_diagnostics_summary(
-    coordinator: DessMonitorDataUpdateCoordinator,
-    device_data: list[dict[str, Any]],
-    diagnostics: dict[str, Any],
-) -> dict[str, Any]:
-    """Create diagnostics summary block."""
-    sensor_types = coordinator.data.get("sensor_types", [])
-    total_sensors = 0
-    if isinstance(sensor_types, list):
-        total_sensors = len(
-            [dp for dp in device_data if dp.get("title") in sensor_types]
-        )
-
-    last_update = _extract_sensor_value(device_data, "Timestamp", "Unknown")
-
-    return {
-        "total_sensors_created": total_sensors,
-        "last_update": last_update,
-        "control_fields_found": len(diagnostics.get("configuration", {})),
-        "parameters_found": len(diagnostics.get("parameters", {})),
-        "unique_features": [
-            "39 Control Fields (vs ~10 in other projects)",
-            "Battery EQ Mode settings",
-            "Advanced power saving modes",
-            "Comprehensive voltage protection settings",
-            "Detailed buzzer and display controls",
-            "Remote boot control options",
-        ],
     }

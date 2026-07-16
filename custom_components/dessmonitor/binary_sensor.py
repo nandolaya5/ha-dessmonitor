@@ -1,4 +1,4 @@
-"""Platform for DessMonitor binary sensor integration."""
+"""Platform for ValueClouds (DessMonitor) binary sensor integration."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import DessMonitorDataUpdateCoordinator
-from .const import BINARY_SENSOR_TYPES, DOMAIN
+from .const import DOMAIN
 from .utils import create_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up DessMonitor binary sensors based on a config entry."""
+    """Set up ValueClouds binary sensors based on a config entry."""
     coordinator: DessMonitorDataUpdateCoordinator = hass.data[DOMAIN][
         config_entry.entry_id
     ]
@@ -33,7 +33,6 @@ async def async_setup_entry(
 
     if coordinator.data:
         for device_sn, device_info in coordinator.data.items():
-            device_data = device_info.get("data", [])
             device_meta = device_info.get("device", {})
             collector_meta = device_info.get("collector", {})
 
@@ -55,79 +54,7 @@ async def async_setup_entry(
                 )
             )
 
-            for data_point in device_data:
-                sensor_type = data_point.get("title")
-                if sensor_type in BINARY_SENSOR_TYPES:
-                    entities.append(
-                        DessMonitorBinarySensor(
-                            coordinator=coordinator,
-                            device_sn=device_sn,
-                            device_meta=device_meta,
-                            collector_meta=collector_meta,
-                            sensor_type=sensor_type,
-                        )
-                    )
-
     async_add_entities(entities, True)
-
-
-class DessMonitorBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """Representation of a DessMonitor binary sensor."""
-
-    def __init__(
-        self,
-        coordinator: DessMonitorDataUpdateCoordinator,
-        device_sn: str,
-        device_meta: dict[str, Any],
-        collector_meta: dict[str, Any],
-        sensor_type: str,
-    ) -> None:
-        """Initialize the binary sensor."""
-        super().__init__(coordinator)
-
-        self._device_sn = device_sn
-        self._device_meta = device_meta
-        self._collector_meta = collector_meta
-        self._sensor_type = sensor_type
-        self._attr_name = f"{device_meta.get('alias', 'DessMonitor')} {BINARY_SENSOR_TYPES[sensor_type]['name']}"
-        self._attr_unique_id = (
-            f"{device_sn}_{sensor_type.lower().replace(' ', '_')}_binary"
-        )
-
-        sensor_config = BINARY_SENSOR_TYPES[sensor_type]
-        if sensor_config.get("device_class"):
-            self._attr_device_class = sensor_config["device_class"]
-
-        if sensor_config.get("icon"):
-            self._attr_icon = sensor_config["icon"]
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return create_device_info(
-            self._device_sn, self._device_meta, self._collector_meta
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the binary sensor is on."""
-        if not self.coordinator.data:
-            return None
-
-        device_info = self.coordinator.data.get(self._device_sn)
-        if not device_info:
-            return None
-
-        device_data = device_info.get("data", [])
-
-        for data_point in device_data:
-            if data_point.get("title") == self._sensor_type:
-                value = data_point.get("val", "").lower()
-
-                if self._sensor_type == "Operating mode":
-                    return value not in ["off-grid mode", "off_grid"]
-
-        return None
 
 
 class DessMonitorStatusSensor(CoordinatorEntity, BinarySensorEntity):
@@ -146,8 +73,8 @@ class DessMonitorStatusSensor(CoordinatorEntity, BinarySensorEntity):
         self._device_sn = device_sn
         self._device_meta = device_meta
         self._collector_meta = collector_meta
-        self._attr_name = f"{device_meta.get('alias', 'DessMonitor')} Status"
-        self._attr_unique_id = f"{device_sn}_status"
+        self._attr_name = f"{device_meta.get('alias', 'Inverter')} Online"
+        self._attr_unique_id = f"{device_sn}_online"
         self._attr_device_class = "connectivity"
         self._attr_icon = "mdi:connection"
 
@@ -185,10 +112,9 @@ class DessMonitorStatusSensor(CoordinatorEntity, BinarySensorEntity):
 
         attrs = {}
         for data_point in device_data:
-            if data_point.get("title") == "Timestamp":
-                attrs["last_seen"] = data_point.get("val")
-            elif data_point.get("title") == "Operating mode":
-                attrs["operating_mode"] = data_point.get("val")
+            field_id = data_point.get("id") or data_point.get("title")
+            if field_id == "status":
+                attrs["system_state"] = data_point.get("val")
 
         return attrs if attrs else None
 
@@ -234,11 +160,11 @@ class GridStatusSensor(CoordinatorEntity, BinarySensorEntity):
         device_data = device_info.get("data", [])
 
         for data_point in device_data:
-            title = data_point.get("title", "")
-            value = data_point.get("val", "").lower()
+            field_id = data_point.get("id") or data_point.get("title")
+            value = data_point.get("val", "")
 
-            if title == "Operating mode":
-                if "off-grid" in value or "battery" in value:
+            if field_id == "status":
+                if value == "OffGrid":
                     return True
                 return False
 
@@ -258,10 +184,10 @@ class GridStatusSensor(CoordinatorEntity, BinarySensorEntity):
         attrs = {}
 
         for data_point in device_data:
-            title = data_point.get("title", "")
-            if title == "Operating mode":
-                attrs["operating_mode"] = data_point.get("val")
-            elif title == "Grid Power":
-                attrs["grid_power"] = data_point.get("val")
+            field_id = data_point.get("id") or data_point.get("title")
+            if field_id == "status":
+                attrs["system_state"] = data_point.get("val")
+            elif field_id == "grid_active_sell_power":
+                attrs["grid_power_w"] = data_point.get("val")
 
         return attrs if attrs else None

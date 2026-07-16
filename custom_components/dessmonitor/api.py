@@ -12,7 +12,7 @@ import aiohttp
 import async_timeout
 from homeassistant.helpers.storage import Store
 
-from .const import API_BASE_URL, DEFAULT_DEVADDR, DEFAULT_I18N, HEADER_PROJECT, UNITS, VERSION
+from .const import API_BASE_URL, DEFAULT_DEVADDR, DEFAULT_I18N, HEADER_PROJECT, VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +75,16 @@ class DessMonitorAPI:
         return {
             "Token": self.token or "",
             "project": HEADER_PROJECT,
+            "i18n": DEFAULT_I18N,
+        }
+
+    def _get_device_params(self) -> dict[str, str]:
+        """Get common device parameters for API requests."""
+        return {
+            "pn": self.pn,
+            "sn": self.sn,
+            "devcode": self.devcode,
+            "devaddr": self.devaddr,
             "i18n": DEFAULT_I18N,
         }
 
@@ -159,7 +169,6 @@ class DessMonitorAPI:
         except asyncio.CancelledError as err:
             _LOGGER.error(
                 "API request for action '%s' was cancelled (likely due to timeout)",
-                action,
             )
             raise DessMonitorError("Request cancelled") from err
         except aiohttp.ClientResponseError as err:
@@ -213,7 +222,6 @@ class DessMonitorAPI:
         except asyncio.CancelledError as err:
             _LOGGER.error(
                 "API request for action '%s' was cancelled (likely due to timeout)",
-                action,
             )
             raise DessMonitorError("Request cancelled") from err
         except aiohttp.ClientResponseError as err:
@@ -408,7 +416,7 @@ class DessMonitorAPI:
     async def get_device_data(self) -> list[dict[str, Any]]:
         """Fetch the raw list of named field readings for the configured device.
 
-        Logs in first if there is no cached token. On an auth-rejection
+        Uses queryDeviceOneDataxxx endpoint. On an auth-rejection
         response, performs exactly one reactive re-login and retry.
         """
         if self.token is None:
@@ -425,13 +433,7 @@ class DessMonitorAPI:
 
     async def _async_fetch_device_data(self) -> list[dict[str, Any]]:
         """Fetch device data using queryDeviceOneDataxxx endpoint."""
-        params = {
-            "pn": self.pn,
-            "sn": self.sn,
-            "devcode": self.devcode,
-            "devaddr": self.devaddr,
-            "i18n": DEFAULT_I18N,
-        }
+        params = self._get_device_params()
 
         _LOGGER.debug("Fetching device data with params: pn=%s, sn=%s, devcode=%s", 
                       _mask_identifier(self.pn), _mask_identifier(self.sn), self.devcode)
@@ -451,6 +453,76 @@ class DessMonitorAPI:
         _LOGGER.debug("Retrieved %d data points for device", len(fields))
 
         return fields
+
+    async def get_device_last_data_structured(self) -> dict[str, Any]:
+        """Fetch structured device data using querySPDeviceLastData endpoint.
+
+        Returns data organized by categories: pv_, bt_, gd_, bc_, sy_, fd_.
+        This is the preferred endpoint for getting device data as it provides
+        a clean, structured response.
+        """
+        if self.token is None:
+            await self.authenticate()
+
+        try:
+            return await self._async_fetch_structured_data()
+        except DessMonitorError as err:
+            if self._is_auth_error(str(err)):
+                _LOGGER.warning("Token rejected, re-authenticating and retrying once")
+                await self.authenticate()
+                return await self._async_fetch_structured_data()
+            raise
+
+    async def _async_fetch_structured_data(self) -> dict[str, Any]:
+        """Fetch structured device data using querySPDeviceLastData endpoint."""
+        params = self._get_device_params()
+
+        _LOGGER.debug("Fetching structured device data")
+
+        response = await self._make_request(
+            "ppe/api/auth/web/querySPDeviceLastData", params
+        )
+
+        _LOGGER.debug("Structured data response received")
+        return response.get("data", {})
+
+    async def get_device_pars(self) -> list[dict[str, Any]]:
+        """Fetch key device parameters using queryDevicePars endpoint.
+
+        Returns a subset of important parameters (SOC, power, energy values).
+        Useful for quick status checks and dashboard sensors.
+        """
+        if self.token is None:
+            await self.authenticate()
+
+        try:
+            return await self._async_fetch_device_pars()
+        except DessMonitorError as err:
+            if self._is_auth_error(str(err)):
+                _LOGGER.warning("Token rejected, re-authenticating and retrying once")
+                await self.authenticate()
+                return await self._async_fetch_device_pars()
+            raise
+
+    async def _async_fetch_device_pars(self) -> list[dict[str, Any]]:
+        """Fetch device parameters using queryDevicePars endpoint."""
+        params = {
+            "uid": "5184686",
+            "devcode": self.devcode,
+            "pn": self.pn,
+            "devaddr": self.devaddr,
+            "sn": self.sn,
+            "i18n": DEFAULT_I18N,
+        }
+
+        _LOGGER.debug("Fetching device parameters")
+
+        response = await self._make_request(
+            "ppe/api/auth/web/queryDevicePars", params
+        )
+
+        _LOGGER.debug("Device parameters response received")
+        return response.get("data", [])
 
     async def get_collectors(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Get list of collectors - returns configured device for ValueClouds."""
@@ -474,7 +546,7 @@ class DessMonitorAPI:
             "dev": [
                 {
                     "devcode": int(self.devcode) if self.devcode.isdigit() else 0,
-                    "devaddr": 255,
+                    "devaddr": int(self.devaddr) if self.devaddr.isdigit() else 4,
                     "sn": self.sn,
                     "alias": f"Inverter {self.sn}",
                 }
@@ -505,13 +577,7 @@ class DessMonitorAPI:
 
     async def get_energy_flow(self) -> dict[str, Any]:
         """Get energy flow data from queryDeviceEnergyFlow endpoint."""
-        params = {
-            "pn": self.pn,
-            "sn": self.sn,
-            "devcode": self.devcode,
-            "devaddr": self.devaddr,
-            "i18n": DEFAULT_I18N,
-        }
+        params = self._get_device_params()
 
         _LOGGER.debug("Fetching energy flow data")
 
