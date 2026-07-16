@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-07-16
+
+### Changed
+- **Complete sensor rewrite** — replaced title-based matching with field ID-based matching (`pv_voltage`, `pv_power1`, `bt_battery_capacity`, etc.) matching actual ValueClouds API responses.
+- Added `querySPDeviceLastData` and `queryDevicePars` API endpoints.
+- Simplified coordinator: removed unused control/parameter fetch logic (ValueClouds API v1 has no remote control).
+- Removed BUTTON, NUMBER, SELECT platforms (not supported in ValueClouds API v1).
+- Simplified binary sensors to use field ID `status` instead of title `Operating mode`.
+
+### Fixed
+- Device address (`devaddr`) now uses configured value instead of hardcoding `255`.
+- Energy flow sensors now created directly in sensor platform instead of calling API during setup.
+
+### Removed
+- ~50 legacy DessMonitor sensor types that don't exist in ValueClouds API.
+- Complex devcode transformation logic (simplified for ValueClouds).
+
 ## [2.3.8] - 2026-07-15
 
 ### Fixed
@@ -380,8 +397,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code quality enforcement (Black, isort, flake8)
 - Hassfest and HACS validation
 
-[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.2.0...HEAD
-[2.2.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.1.0...v2.2.0
+[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.3.8...v2.4.0
+[2.3.8]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.3.7...v2.3.8
 [2.1.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.9.0...v2.0.0
 [1.9.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v1.8.0...v1.9.0
