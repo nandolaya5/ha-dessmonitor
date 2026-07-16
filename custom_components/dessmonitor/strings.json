@@ -20,7 +20,7 @@
           "sn": "The SN/serial number of your inverter",
           "devcode": "The device protocol code (e.g. 23250, 6409)",
           "devaddr": "Device address from DevTools (typically 4 or 255)",
-          "update_interval": "How often to fetch data from ValueClouds. Default is 300 seconds (5 minutes)."
+          "update_interval": "How often to fetch data from ValueClouds. Default is5 seconds (real-time). For faster updates, use5-30 seconds."
         }
       }
     },
@@ -42,7 +42,7 @@
           "update_interval": "Update interval (seconds)"
         },
         "data_description": {
-          "update_interval": "How often to fetch data from ValueClouds (minimum 60 seconds)"
+          "update_interval": "How often to fetch data from ValueClouds (minimum 5 seconds)"
         }
       }
     }

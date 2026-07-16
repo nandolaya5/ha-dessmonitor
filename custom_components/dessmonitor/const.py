@@ -13,14 +13,17 @@ CONF_DEVCODE: Final = "devcode"
 CONF_DEVADDR: Final = "devaddr"
 CONF_UPDATE_INTERVAL: Final = "update_interval"
 
-DEFAULT_UPDATE_INTERVAL: Final = 300
+DEFAULT_UPDATE_INTERVAL: Final = 5
 DEFAULT_DEVADDR: Final = "4"
-MIN_UPDATE_INTERVAL: Final = 60
+MIN_UPDATE_INTERVAL: Final = 5
 MAX_UPDATE_INTERVAL: Final = 3600
 
 UPDATE_INTERVAL_OPTIONS: Final = {
-    60: "1 minute (Collection Acceleration)",
-    300: "5 minutes (Standard)",
+    5: "5 seconds (Real-time)",
+    10: "10 seconds (Fast)",
+    30: "30 seconds (Quick)",
+    60: "1 minute (Standard)",
+    300: "5 minutes (Normal)",
     600: "10 minutes (Reduced API usage)",
     1800: "30 minutes (Low usage)",
     3600: "1 hour (Minimal usage)",
