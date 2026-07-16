@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-07-16
+
+### Added
+- Real-time update intervals: 5s, 10s, 30s options for near-instant monitoring (default: 5 seconds).
+
 ## [2.4.0] - 2026-07-16
 
 ### Changed
@@ -15,9 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Simplified coordinator: removed unused control/parameter fetch logic (ValueClouds API v1 has no remote control).
 - Removed BUTTON, NUMBER, SELECT platforms (not supported in ValueClouds API v1).
 - Simplified binary sensors to use field ID `status` instead of title `Operating mode`.
-
-### Added
-- Real-time update intervals: 5s, 10s, 30s options for near-instant monitoring (default: 5 seconds).
 
 ### Fixed
 - Device address (`devaddr`) now uses configured value instead of hardcoding `255`.
@@ -400,7 +402,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code quality enforcement (Black, isort, flake8)
 - Hassfest and HACS validation
 
-[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.3.8...v2.4.0
 [2.3.8]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.3.7...v2.3.8
 [2.1.0]: https://github.com/andreas-glaser/ha-dessmonitor/compare/v2.0.0...v2.1.0
