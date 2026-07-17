@@ -73,6 +73,7 @@ class DessMonitorStatusSensor(CoordinatorEntity, BinarySensorEntity):
         self._device_sn = device_sn
         self._device_meta = device_meta
         self._collector_meta = collector_meta
+        self._last_state: bool | None = None
         self._attr_name = f"{device_meta.get('alias', 'Inverter')} Online"
         self._attr_unique_id = f"{device_sn}_online"
         self._attr_device_class = "connectivity"
@@ -89,14 +90,15 @@ class DessMonitorStatusSensor(CoordinatorEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return true if the device is online."""
         if not self.coordinator.data:
-            return False
+            return self._last_state
 
         device_info = self.coordinator.data.get(self._device_sn)
         if not device_info:
-            return False
+            return self._last_state
 
         device_data = device_info.get("data", [])
-        return len(device_data) > 0
+        self._last_state = len(device_data) > 0
+        return self._last_state
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -135,6 +137,7 @@ class GridStatusSensor(CoordinatorEntity, BinarySensorEntity):
         self._device_sn = device_sn
         self._device_meta = device_meta
         self._collector_meta = collector_meta
+        self._last_state: bool | None = None
         self._attr_name = f"{device_meta.get('alias', 'Inverter')} Grid Down"
         self._attr_unique_id = f"{device_sn}_grid_down"
         self._attr_device_class = "power"
@@ -151,11 +154,11 @@ class GridStatusSensor(CoordinatorEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return true when grid is down (off-grid mode)."""
         if not self.coordinator.data:
-            return None
+            return self._last_state
 
         device_info = self.coordinator.data.get(self._device_sn)
         if not device_info:
-            return None
+            return self._last_state
 
         device_data = device_info.get("data", [])
 
@@ -164,11 +167,10 @@ class GridStatusSensor(CoordinatorEntity, BinarySensorEntity):
             value = data_point.get("val", "")
 
             if field_id == "status":
-                if value == "OffGrid":
-                    return True
-                return False
+                self._last_state = value == "OffGrid"
+                return self._last_state
 
-        return None
+        return self._last_state
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

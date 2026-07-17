@@ -160,6 +160,7 @@ class ValueCloudsSensor(CoordinatorEntity, SensorEntity):
         self._field_id = field_id
         self._sensor_config = sensor_config
         self._data_point = data_point
+        self._last_value: str | float | None = None
 
         device_alias = device_meta.get("alias", "Inverter")
         sensor_name = sensor_config.get("name", field_id)
@@ -257,11 +258,11 @@ class ValueCloudsSensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> str | float | None:
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            return None
+            return self._last_value
 
         device_info = self.coordinator.data.get(self._device_sn)
         if not device_info:
-            return None
+            return self._last_value
 
         device_data = device_info.get("data", [])
 
@@ -269,9 +270,12 @@ class ValueCloudsSensor(CoordinatorEntity, SensorEntity):
             point_id = data_point.get("id") or data_point.get("title")
             if point_id == self._field_id:
                 value = data_point.get("val")
-                return self._coerce_native_value(value)
+                result = self._coerce_native_value(value)
+                if result is not None:
+                    self._last_value = result
+                return result
 
-        return None
+        return self._last_value
 
     def _coerce_native_value(self, value: Any) -> str | float | None:
         """Coerce API value into Home Assistant native value format."""
@@ -326,6 +330,7 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         self._collector_meta = collector_meta
         self._sensor_id = sensor_id
         self._config = config
+        self._last_value: float | None = None
 
         self._attr_name = f"{device_meta.get('alias', 'Inverter')} {config['name']}"
         self._attr_unique_id = f"{DOMAIN}_{device_sn}_{sensor_id}"
@@ -372,7 +377,7 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         """Return the sensor value from coordinator's energy flow data."""
         energy_flow = getattr(self.coordinator, 'energy_flow', {})
         if not energy_flow:
-            return None
+            return self._last_value
 
         section = self._config["section"]
         key = self._config["key"]
@@ -381,11 +386,13 @@ class EnergyFlowSensor(CoordinatorEntity, SensorEntity):
         for item in section_data:
             if item.get("par") == key:
                 try:
-                    return float(item.get("val", 0))
+                    value = float(item.get("val", 0))
+                    self._last_value = value
+                    return value
                 except (ValueError, TypeError):
-                    return None
+                    return self._last_value
 
-        return None
+        return self._last_value
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

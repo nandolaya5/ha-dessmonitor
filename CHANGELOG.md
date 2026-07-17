@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-07-17
+
+### Fixed
+- Sensors now retain last known value when API sync fails instead of showing unavailable.
+
 ## [2.4.1] - 2026-07-16
 
 ### Added
