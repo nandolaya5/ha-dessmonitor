@@ -236,6 +236,12 @@ class ValueCloudsSensor(CoordinatorEntity, SensorEntity):
 
     def _apply_sensor_traits(self, sensor_config: dict[str, Any]) -> None:
         """Apply additional metadata such as state class and icons."""
+        device_class = sensor_config.get("device_class")
+        if device_class:
+            self._attr_device_class = getattr(
+                SensorDeviceClass, device_class.upper(), None
+            )
+
         if self._field_id in ENUM_SENSOR_TITLES:
             self._attr_device_class = SensorDeviceClass.ENUM
             if self._field_id == "status":

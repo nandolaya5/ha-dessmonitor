@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.3] - 2026-07-22
+
+### Fixed
+- Battery SOC sensor now correctly applies `device_class: battery`, allowing it to appear in the Energy Dashboard's "Battery state of charge" section.
+
 ## [2.4.2] - 2026-07-17
 
 ### Fixed
